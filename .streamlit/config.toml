@@ -1,0 +1,18 @@
+# GarudaChip Streamlit config.
+# The file watcher introspects every imported module's __path__, which makes
+# transformers lazily import its vision models (yolos/zoedepth) and fail on the
+# optional `torchvision` dependency — noisy and pointless for this app. Disable
+# it (we run the app, we don't hot-edit it under Streamlit).
+[server]
+fileWatcherType = "none"
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Keep tracebacks tidy in the UI.
+fastReruns = true
+# Disable "magic" — never auto-render bare expressions / object help
+# (this is what was dumping a DeltaGenerator's docstring into the page).
+magicEnabled = false

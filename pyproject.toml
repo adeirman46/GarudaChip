@@ -1,0 +1,55 @@
+[project]
+name = "garuda-chip"
+version = "0.1.0"
+description = "GarudaChip — local-LLM-driven digital & SoC RTL-to-GDSII automation (Ollama + LibreLane)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    # --- Web UI ---
+    "streamlit>=1.46",
+    "python-dotenv>=1.0",
+    "graphviz>=0.20",
+    # --- Data / async utils ---
+    "pandas>=2.2",
+    "numpy>=1.26,<2.0",
+    "nest-asyncio>=1.6",
+    "requests>=2.32",
+    "httpx>=0.28",
+    "aiohttp>=3.11",
+    # --- Local ML / embeddings for RAG (uses the local GPU when available) ---
+    "torch>=2.6",
+    "transformers>=4.51",
+    "sentence-transformers>=4.1",
+    "scikit-learn>=1.6",
+    "faiss-cpu>=1.11",
+    # --- LangGraph / LangChain orchestration ---
+    "langgraph>=0.2",
+    "langchain>=0.3,<0.4",
+    "langchain-core>=0.3,<0.4",
+    "langchain-community>=0.3,<0.4",
+    "langchain-huggingface>=0.1",
+    # Local model provider (DEFAULT): Ollama, e.g. qwen3.5:9b
+    "langchain-ollama>=0.2",
+    # Optional cloud fallback: Google Gemini
+    "langchain-google-genai>=2.0",
+    # --- Waveform viewer ---
+    "sootty>=0.3",
+]
+
+[project.optional-dependencies]
+# Web-research agent (Verilog generator can pull reference designs from the web).
+# Kept optional because crawl4ai pulls Playwright + a Chromium download.
+web = [
+    "crawl4ai>=0.4",
+    "ddgs>=9.0",                 # DuckDuckGo search (reliable, no API key)
+    "googlesearch-python>=1.2",  # fallback search
+]
+
+[tool.uv]
+# This is an application, not a library — uv manages the environment but does
+# not try to build/install the project itself.
+package = false
+
+# Pull the CUDA build of torch from PyPI (default on Linux x86_64). The machine
+# has an NVIDIA GPU, so embeddings run on the GPU.

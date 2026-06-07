@@ -1,0 +1,33 @@
+# --- Secrets / local config ---
+.env
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- uv / virtualenv ---
+.venv/
+# uv.lock IS committed (reproducible installs).
+
+# --- FAISS RAG indexes (large binaries; regenerated locally) ---
+# Verilog dataset vector indexes — keep these out of git.
+data/verilog_datasets/index.faiss
+data/verilog_datasets/index.pkl
+faiss_verilog_db/
+data/verilog_datasets/verilog-instruct-deepseek-60k.csv
+verilogeval-v2.csv
+
+# --- LibreLane / OpenLane run output ---
+openlane_run/
+librelane_run/
+**/runs/
+*.vvp
+
+# --- Generated design artifacts ---
+examples/generated_chips/**/runs/
+examples/verilog_designs/**/runs/
+
+# --- Caches ---
+.cache/

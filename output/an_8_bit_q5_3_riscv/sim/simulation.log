@@ -1,0 +1,3 @@
+ERROR:
+/home/irman/GarudaChip/output/an_8_bit_q5_3_riscv/rtl/riscv_q5_3_regfile.v:24: syntax error
+/home/irman/GarudaChip/output/an_8_bit_q5_3_riscv/rtl/riscv_q5_3_regfile.v:24: error: malformed statement
