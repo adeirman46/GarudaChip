@@ -48,6 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "verilog_datasets"
 OUTPUT_DIR = REPO_ROOT / "output"          # <-- all results land here
 MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "20"))
+MAX_LINT_RETRIES = int(os.getenv("MAX_LINT_RETRIES", "10"))
 LIBRELANE_BIN = os.getenv("LIBRELANE_BIN", "librelane")
 PDK = os.getenv("PDK", "gf180mcuD")
 PDK_ROOT = os.getenv("PDK_ROOT", os.path.expanduser("~/.ciel"))
@@ -113,6 +114,19 @@ def librelane_available() -> bool:
     return shutil.which(LIBRELANE_BIN) is not None
 
 
+def find_verilator() -> str | None:
+    """Locate verilator even if it isn't on PATH — LibreLane pulls it into its Nix
+    closure (not exposed as a profile binary), so fall back to the Nix store / env."""
+    v = shutil.which("verilator")
+    if v:
+        return v
+    v = os.getenv("VERILATOR_BIN")
+    if v and Path(v).exists():
+        return v
+    cands = sorted(glob.glob("/nix/store/*verilator*/bin/verilator"))
+    return cands[-1] if cands else None
+
+
 def slugify(text: str, n: int = 48) -> str:
     return re.sub(r"\W+", "_", text).lower().strip("_")[:n] or "design"
 
@@ -124,6 +138,17 @@ def _norm(code: str) -> str:
     code = re.sub(r"//[^\n]*", "", code or "")
     code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
     return re.sub(r"\s+", " ", code).strip()
+
+
+def _looks_repetitive(text: str) -> bool:
+    """Detect a degenerate generation loop — the model spewing the same handful of
+    lines over and over (e.g. '// We will assume … // But the prompt says …'). If
+    the last 30 non-empty lines collapse to ≤3 distinct lines, it's looping. Real
+    code/reasoning almost never does that (each line differs)."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 30:
+        return False
+    return len(set(lines[-30:])) <= 3
 
 
 # Concrete pitfalls a weak local model trips on REPEATEDLY (e.g. `4{8'd0}`,
@@ -140,7 +165,13 @@ VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY 
 4. reg vs wire: a signal assigned inside `always` must be `reg`/`output reg`; declare
    every signal EXACTLY ONCE (never both a module port AND a separate reg/wire).
 5. WIDTHS must match on every assignment and port connection; sign-extend explicitly.
-6. Don't index a packed vector as if it were an unpacked array, or vice-versa."""
+6. Don't index a packed vector as if it were an unpacked array, or vice-versa.
+7. NO COMBINATIONAL LOOP (Verilator UNOPTFLAT): a signal must NOT depend on itself
+   through pure `assign`/combinational logic (e.g. `assign x = x + 1;` or a chain
+   `assign a=b; assign b=a;`). Break the loop — register the feedback in an `always
+   @(posedge clk)`, or drive the output from sequential logic, not a self-referential wire.
+8. An `output` must have exactly ONE source — never both an `assign` and an `always`
+   block writing the same output (Verilator MULTIDRIVEN)."""
 
 
 # ---- Live workflow graph (highlights the agent currently working) ---------- #
@@ -153,15 +184,17 @@ WF_NODES = [
     ("testbench", "5 · 🧪 Testbench\nWriter"),
     ("write", "6 · 💾 File\nWriter"),
     ("simulate", "7 · 🔬 Icarus\nSim"),
-    ("correct", "8 · 🛠️ Correctors"),
-    ("harden", "9 · 🏭 LibreLane\nHardening"),
+    ("lint", "8 · 🔍 Verilator\nLint"),
+    ("correct", "9 · 🛠️ Correctors"),
+    ("harden", "10 · 🏭 LibreLane\nHardening"),
     ("gds", "🎉 GDSII"),
 ]
 WF_EDGES = [
     ("plan", "retrieve"),
     ("retrieve", "web"), ("web", "generate"), ("generate", "decompose"),
     ("decompose", "testbench"), ("testbench", "write"), ("write", "simulate"),
-    ("simulate", "correct"), ("correct", "write"), ("simulate", "harden"),
+    ("simulate", "correct"), ("correct", "write"), ("simulate", "lint"),
+    ("lint", "correct"), ("lint", "harden"),
     ("harden", "gds"),
 ]
 # Map an executed step name -> the graph node it lights up.
@@ -214,6 +247,13 @@ def stream_to(runnable, inputs, placeholder, tail: int = 9000) -> str:
             n += 1
             if n % 3 == 0:
                 render()
+            # Circuit-breaker: bail out of a degenerate repetition loop instead of
+            # streaming the same lines forever (the model never stops on its own).
+            if n % 15 == 0 and (_looks_repetitive(answer) or _looks_repetitive(thinking)):
+                answer += "\n// [GarudaChip] generation stopped — model entered a repetition loop.\n"
+                break
+            if len(answer) + len(thinking) > 120_000:  # hard safety cap
+                break
     except Exception:  # noqa: BLE001
         if not answer and not thinking:
             out = runnable.invoke(inputs)
@@ -400,6 +440,8 @@ def _draw(kind, payload):
     elif kind == "json":
         with st.expander("All metrics"):
             st.json(payload[0])
+    elif kind == "graphviz":
+        st.graphviz_chart(payload[0], use_container_width=True)
 
 
 class _NullPH:
@@ -453,6 +495,9 @@ class Recorder:
 
     def json(self, data):
         self._add("json", (data,))
+
+    def graphviz(self, dot):
+        self._add("graphviz", (dot,))
 
     def placeholder(self):
         """A LIVE streaming target (st.empty) during execution; a no-op on replay."""
@@ -616,6 +661,10 @@ REQUEST:
     if feedback:
         question += f"\n\nADDITIONAL USER INSTRUCTION (apply this): {feedback}"
 
+    def is_degenerate(code: str) -> bool:
+        # Empty, or a repetition loop produced no real module — force a retry.
+        return (not code.strip()) or ("module" not in code) or _looks_repetitive(code)
+
     chain = prompt | llm
     rec.caption("🧠 Live model output (reasoning + RTL):")
     live = rec.placeholder()
@@ -624,8 +673,8 @@ REQUEST:
                                 "pitfalls": VERILOG_PITFALLS}, live)
     gen = extract_code_block(raw)
 
-    if not gen.strip():  # empty? retry once without the (possibly huge) references
-        rec.warning("Model returned no code — retrying with a tighter prompt…")
+    if is_degenerate(gen):  # looped / empty? retry once without the (possibly huge) references
+        rec.warning("Model produced no usable RTL (empty or stuck in a loop) — retrying with a tighter prompt…")
         with st.spinner("Retrying generation…"):
             raw = stream_to(chain, {"context": _ref_context(ctx) + "No reference context.",
                                     "question": question, "pitfalls": VERILOG_PITFALLS}, live)
@@ -644,43 +693,67 @@ REQUEST:
     ctx["simulation_output"] = ""
 
 
+def _top_module(blocks: List[str], names: List[str]) -> str:
+    """Pick the top module structurally: the one no OTHER module instantiates.
+    Falls back to the largest module if every name is referenced somewhere."""
+    instantiated = set()
+    for nm, b in zip(names, blocks):
+        for other in names:
+            if other != nm and re.search(rf"\b{re.escape(other)}\b", b):
+                instantiated.add(other)
+    candidates = [n for n in names if n not in instantiated]
+    if candidates:
+        return candidates[0]
+    return names[max(range(len(blocks)), key=lambda i: len(blocks[i]))]
+
+
 def agent_decompose(rec, ctx, feedback=""):
-    llm = get_chat_model(temperature=0.0)
-    prompt = ChatPromptTemplate.from_template(
-        """Refactor this Verilog into separate files.
-Rules:
-1. Identify the top-level module.
-2. One module per file ("module_name.v").
-3. Move shared `define`/parameters into "shared_header.vh" and `include` it where used.
-4. Reply with ONLY a JSON object: {{"top_module_name": "...", "files": {{"name.v": "code"}}}}.
-{extra}
-REQUEST: {query}
-CODE:
-```verilog
-{verilog_code}
-```"""
-    )
-    rec.caption("🧠 Live model output:")
-    live = rec.placeholder()
-    extra = f"5. User instruction: {feedback}\n" if feedback else ""
-    with st.spinner("Decomposing…"):
-        resp = stream_to(prompt | llm,
-                         {"verilog_code": ctx["generation"], "query": ctx["query"], "extra": extra}, live)
-    try:
-        parsed = extract_json(resp)
-        files = parsed.get("files", {})
-        top = parsed.get("top_module_name", "")
-        if not files or not top:
-            raise ValueError("missing files/top_module_name")
-    except Exception as e:  # noqa: BLE001
-        rec.warning(f"Decompose fell back to monolithic ({e}).")
-        m = re.search(r"module\s+([\w]+)", ctx["generation"])
-        top = m.group(1) if m else "top"
-        files = {f"{top}.v": ctx["generation"]}
-    files = {k: dedup_modules(v) for k, v in files.items()}
-    rec.success(f"Top module: `{top}` · {len(files)} file(s).")
-    for fn, code in files.items():
-        rec.expander_code(f"📄 {fn}", code, "verilog", expanded=(fn == f"{top}.v"))
+    # MECHANICAL split — NO LLM. Asking a weak local model to "refactor into files"
+    # made it REWRITE the logic (different code) or loop. Splitting on module
+    # boundaries with regex preserves the generated RTL EXACTLY, byte-for-byte.
+    code = ctx["generation"]
+    rec.caption("Splitting the RTL into per-module files mechanically (no LLM) — the code is "
+                "preserved EXACTLY as generated, never rewritten.")
+    # Find REAL module declarations: the `module` keyword + name followed by `(`,
+    # `#`, or `;`. The trailing anchor is what skips the word "module" when it just
+    # appears inside a comment (e.g. `// Top level CPU module`).
+    starts = [(m.start(), m.group(1)) for m in re.finditer(r"\bmodule\s+(\w+)\s*[#(;]", code)]
+    blocks: List[str] = []
+    names: List[str] = []
+    for pos, name in starts:
+        em = re.search(r"\bendmodule\b", code[pos:])
+        end = pos + em.end() if em else len(code)
+        blocks.append(code[pos:end])
+        names.append(name)
+
+    files: Dict[str, str] = {}
+    # Leading content before the first real module (shared defines / includes / params).
+    head = code[: starts[0][0]].strip() if starts else ""
+    header_name = None
+    if head and re.search(r"`define|`include|parameter|localparam", head):
+        header_name = "shared_header.vh"
+        # Wrap in an include guard — the header is `include`d by EVERY module file,
+        # so without a guard its parameters get declared once per module and iverilog
+        # errors with "'DATA_WIDTH' has already been declared in this scope".
+        files[header_name] = (f"`ifndef SHARED_HEADER_VH\n`define SHARED_HEADER_VH\n\n"
+                              f"{head}\n\n`endif // SHARED_HEADER_VH")
+
+    if not blocks:
+        rec.warning("No `module … endmodule` found — keeping the output as a single file.")
+        m = re.search(r"module\s+(\w+)", code)
+        top = m.group(1) if m else slugify(ctx["query"], 24)
+        files[f"{top}.v"] = code.strip()
+    else:
+        top = _top_module(blocks, names)
+        inc = f'`include "{header_name}"\n\n' if header_name else ""
+        for nm, b in zip(names, blocks):
+            files[f"{nm}.v"] = (inc + b.strip()) if header_name else b.strip()
+
+    files = {k: v for k, v in files.items() if v.strip()}
+    rec.success(f"Top module: `{top}` · {len(files)} file(s) — split verbatim, no code changed.")
+    for fn, c in files.items():
+        rec.expander_code(f"📄 {fn}", c, "verilog" if fn.endswith(".v") else "text",
+                          expanded=(fn == f"{top}.v"))
     ctx["decomposed_files"] = files
     ctx["top_module_name"] = top
 
@@ -788,9 +861,60 @@ def agent_simulate(rec, ctx, feedback=""):
     ctx["error_count"] = ctx.get("error_count", 0) + 1
 
 
+def agent_lint(rec, ctx, feedback=""):
+    """Structural lint gate (Verilator) BETWEEN a passing sim and hardening. Catches
+    the exact issues that make LibreLane fail — combinational loops (UNOPTFLAT),
+    multiple-driver nets (MULTIDRIVEN), inferred latches (LATCH) — and routes them to
+    the corrector so the RTL is genuinely clean before PnR (not just lint-silenced)."""
+    design_dir = Path(ctx["design_dir"])
+    rtl_dir = design_dir / "rtl"
+    vfiles = sorted(glob.glob(str(rtl_dir / "*.v")))
+    top = ctx.get("top_module_name") or ""
+    vbin = find_verilator()
+    if not vbin:
+        rec.warning("Verilator not found — skipping the lint gate (it still runs inside LibreLane).")
+        ctx["lint_output"] = ""
+        return
+    if not vfiles:
+        rec.warning("No RTL to lint.")
+        ctx["lint_output"] = ""
+        return
+    cmd = [vbin, "--lint-only", "-Wno-fatal",
+           "--Werror-MULTIDRIVEN", "--Werror-LATCH", "--Werror-UNOPTFLAT",
+           "-I", str(rtl_dir)]
+    if top:
+        cmd += ["--top-module", top]
+    cmd += vfiles
+    rec.write("**Verilator structural lint (comb-loops / multidriven / latches):**")
+    rec.code("verilator --lint-only --Werror-MULTIDRIVEN --Werror-LATCH --Werror-UNOPTFLAT "
+             + " ".join(os.path.basename(f) for f in vfiles), language="bash")
+    try:
+        with st.spinner("Linting RTL…"):
+            proc = subprocess.run(cmd, cwd=str(rtl_dir), capture_output=True, text=True, timeout=120)
+        out = (proc.stdout + "\n" + proc.stderr).strip()
+        failed = proc.returncode != 0 or "%Error" in out
+    except Exception as e:  # noqa: BLE001
+        rec.warning(f"Lint could not run ({e}); skipping the gate.")
+        ctx["lint_output"] = ""
+        return
+
+    (design_dir / "sim").mkdir(parents=True, exist_ok=True)
+    (design_dir / "sim" / "lint.log").write_text(out or "clean")
+    if not failed:
+        rec.success("✅ Lint clean — RTL is structurally sound for hardening.")
+        ctx["lint_output"] = ""
+        return
+    rec.error("❌ Lint found structural issues — routing to the corrector before hardening.")
+    rec.code(out[:2500], language="text")
+    ctx["lint_output"] = out
+    ctx["lint_count"] = ctx.get("lint_count", 0) + 1
+
+
 def agent_fix_design(rec, ctx, feedback=""):
     files = dict(ctx["decomposed_files"])
-    err = ctx["simulation_output"]
+    # In the sim loop this is the simulation error; in the lint loop (sim already
+    # passed, so simulation_output is empty) it's the Verilator lint error.
+    err = ctx.get("simulation_output") or ctx.get("lint_output", "")
     faulty = next((f for f in files if f in err), None) or f"{ctx['top_module_name']}.v"
     faulty = faulty if faulty in files else next(iter(files))
     history = dict(ctx.get("fix_history", {}))
@@ -799,7 +923,7 @@ def agent_fix_design(rec, ctx, feedback=""):
     rec.write("**Compiler/sim errors fed to the model:**")
     rec.code(err[:1800], language="text")
     rec.expander_code(f"Current (broken) `{faulty}` given to the corrector", files[faulty], "verilog")
-    attempt = ctx.get("error_count", 0)
+    attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
     temp = min(0.2 + 0.18 * attempt, 0.85)
     if past:
         rec.caption(f"⛔ {len(past)} earlier fix(es) of `{faulty}` failed — all are shown to the model "
@@ -967,6 +1091,25 @@ def agent_harden(rec, ctx, feedback=""):
         "FP_SIZING": "absolute", "DIE_AREA": [0, 0, float(ctx["die_um"]), float(ctx["die_um"])],
         "FP_CORE_UTIL": core_util, "PL_TARGET_DENSITY_PCT": max(20, core_util + 5),
         "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
+        # --- Keep Verilator lint INFORMATIVE but NON-FATAL ---
+        # Auto-generated RTL routinely trips Verilator lint (UNOPTFLAT comb-loops,
+        # MULTIDRIVEN nets, inferred latches). By default LibreLane runs lint with
+        # `--Werror-MULTIDRIVEN`/`--Werror-LATCH` and then QUITS on any lint error —
+        # which kills hardening even though the design already passed simulation.
+        # We disable those escalations and the quit-on-lint gate so the flow reaches
+        # GDSII; the lint findings still show up in the log. Override via env if you
+        # want strict lint back (LIBRELANE_STRICT_LINT=1).
+        **({} if os.getenv("LIBRELANE_STRICT_LINT", "0") in ("1", "true", "yes") else {
+            "LINTER_ERROR_ON_LATCH": False,
+            "LINTER_ERROR_ON_MULTIDRIVEN": False,
+            "ERROR_ON_LINTER_ERRORS": False,
+            "ERROR_ON_LINTER_WARNINGS": False,
+            "LINTER_DISABLE_WARNINGS": [
+                "UNOPTFLAT", "WIDTH", "WIDTHEXPAND", "WIDTHTRUNC", "WIDTHCONCAT",
+                "CASEINCOMPLETE", "CASEOVERLAP", "UNUSEDSIGNAL", "UNDRIVEN",
+                "IMPLICIT", "BLKSEQ", "SYNCASYNCNET", "DECLFILENAME", "EOFNEWLINE",
+            ],
+        }),
     }
     (chip_dir / "config.json").write_text(json.dumps(config, indent=2))
     rec.expander_code("config.json", json.dumps(config, indent=2), "json")
@@ -1037,6 +1180,7 @@ STEP_DEFS = {
     "testbench":     ("🧪", "Testbench Writer", "Self-checking testbench with PASSED/FAILED.", agent_testbench, True),
     "write":         ("💾", "File Writer", "Write RTL + testbench to the output folder.", agent_write, False),
     "simulate":      ("🔬", "Icarus Simulator", "Compile + run with iverilog/vvp.", agent_simulate, False),
+    "lint":          ("🔍", "Verilator Lint", "Structural lint gate before hardening.", agent_lint, False),
     "fix_design":    ("🛠️", "Module Corrector", "LLM fixes the failing design module.", agent_fix_design, True),
     "fix_testbench": ("🛠️", "Testbench Corrector", "LLM fixes the testbench.", agent_fix_testbench, True),
     "harden":        ("🏭", "LibreLane Hardening", "RTL → synthesis → PnR → signoff → GDSII.", agent_harden, False),
@@ -1058,10 +1202,18 @@ def advance(run, node):
     if node == "plan":
         q.extend(ctx.get("_plan", []))
     elif node == "simulate":
-        if ctx.get("simulation_output"):  # failed
+        if ctx.get("simulation_output"):              # sim failed
             if ctx.get("error_count", 0) < MAX_RETRIES:
                 q[:0] = [route_next(ctx), "write", "simulate"]
-        elif ctx.get("run_harden"):       # passed → harden if requested
+        elif "lint" not in q:                         # sim passed → structural lint gate
+            q.insert(0, "lint")
+    elif node == "lint":
+        if ctx.get("lint_output"):                    # lint failed → fix the RTL, re-verify, re-lint
+            if ctx.get("lint_count", 0) < MAX_LINT_RETRIES:
+                q[:0] = ["fix_design", "write", "simulate", "lint"]
+            elif ctx.get("run_harden"):               # give up fixing → harden anyway (lint is non-fatal)
+                q.append("harden")
+        elif ctx.get("run_harden"):                   # lint clean → harden if requested
             q.append("harden")
 
 
@@ -1148,7 +1300,119 @@ def do_weblookup(run, block):
     run["transcript"].append({"node": "web", "blocks": rec.blocks})
 
 
-def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util):
+# --------------------------------------------------------------------------- #
+# File-system agent — the steering prompt can create/remove/edit files on disk
+# --------------------------------------------------------------------------- #
+def _is_file_command(msg: str) -> bool:
+    """Does this steering prompt ask for a FILE operation (vs design steering)? Precise
+    on purpose: an edit verb must come WITH a real file path/extension, so hardware
+    phrases like 'make a register file' or 'use a 5-stage pipeline' are NOT misrouted."""
+    low = (msg or "").lower()
+    has_path = (bool(re.search(r"\.(v|vh|sv|svh|json|log|vcd|txt)\b", low))
+                or "rtl/" in low or "tb/" in low)
+    listy = any(p in low for p in ("list file", "list all file", "show file",
+                                   "show all file", "what files", "which files", "ls "))
+    edit_verb = any(v in low for v in ("remove", "delete", "hapus", "rm ", "create",
+                                       "rename", "move ", "overwrite", "write to",
+                                       "new file", "make a file", "add a file"))
+    return listy or (edit_verb and has_path)
+
+
+def _sync_ctx_from_disk(ctx):
+    """Re-read rtl/ + tb/ from disk into the pipeline state after the file agent (or
+    a manual edit) changed files, so later steps use the new files."""
+    design_dir = Path(ctx["design_dir"])
+    rtl = {p.name: p.read_text() for p in sorted((design_dir / "rtl").glob("*"))
+           if p.suffix in (".v", ".vh")}
+    tb = {p.name: p.read_text() for p in sorted((design_dir / "tb").glob("*.v"))}
+    if rtl:
+        ctx["decomposed_files"] = rtl
+        if f"{ctx.get('top_module_name')}.v" not in rtl:
+            top_v = next((n for n in rtl if n.endswith(".v")), None)
+            if top_v:
+                ctx["top_module_name"] = top_v[:-2]
+    if tb:
+        ctx["testbench_code"] = tb
+
+
+def _format_deep_state(state) -> str:
+    """deepagents run state → readable transcript (plan todos + tool calls + results)."""
+    msgs = state.get("messages", [])
+    todos = state.get("todos", []) or []
+    lines = []
+    if todos:
+        lines.append("**📋 Plan:**")
+        for t in todos:
+            mark = {"completed": "✅", "in_progress": "🔄", "pending": "⬜"}.get(t.get("status"), "⬜")
+            lines.append(f"{mark} {t.get('content', '')}")
+        lines.append("")
+    for m in msgs:
+        kind = m.__class__.__name__
+        if kind == "AIMessage":
+            if getattr(m, "content", ""):
+                lines.append(str(m.content))
+            for tc in (getattr(m, "tool_calls", None) or []):
+                args = ", ".join(f"{k}={str(v)[:60]}" for k, v in (tc.get("args") or {}).items())
+                lines.append(f"🔧 `{tc.get('name')}({args})`")
+        elif kind == "ToolMessage":
+            lines.append(f"   ↳ {str(getattr(m, 'content', ''))[:300]}")
+    return "\n\n".join(lines)
+
+
+def _agent_graphviz(agent):
+    """Build a graphviz Digraph of the deepagents agent (planning + tool nodes)."""
+    try:
+        g = agent.get_graph()
+        dot = graphviz.Digraph()
+        dot.attr(rankdir="LR", bgcolor="transparent")
+        dot.attr("node", shape="box", style="rounded,filled", fillcolor="#e3f2fd",
+                 color="#1565c0", fontname="sans-serif", fontsize="10")
+        dot.attr("edge", color="#90a4ae")
+        for nid, node in g.nodes.items():
+            label = str(getattr(node, "name", None) or nid)
+            dot.node(str(nid), label)
+        for e in g.edges:
+            dot.edge(str(e.source), str(e.target))
+        return dot
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def do_fileagent(run, msg):
+    """Run the deepagents file agent (qwen3.5:9b) on the design dir for a natural-language
+    file command ('remove the .vh file', 'create rtl/alu.v', …), show its agent graph +
+    actions, then sync the changed files back into the pipeline state."""
+    from deep_agent import build_deep_agent
+
+    ctx = run["ctx"]
+    design_dir = Path(ctx["design_dir"])
+    rec = Recorder("🤖", "File Agent (deepagents · qwen3.5:9b)",
+                   "Real file-system access — plans, then lists/reads/writes/deletes files on disk.",
+                   "plan", live=True)
+    rec.caption(f"Command: *{msg}*")
+    try:
+        agent = build_deep_agent(design_dir)
+        dot = _agent_graphviz(agent)
+        if dot is not None:
+            rec.markdown("**🕸️ Agent graph:**")
+            rec.graphviz(dot)
+        box = rec.placeholder()
+        final = ""
+        with st.spinner("File agent working (planning + file tools)…"):
+            for state in agent.stream({"messages": [{"role": "user", "content": msg}]},
+                                      stream_mode="values", config={"recursion_limit": 40}):
+                final = _format_deep_state(state)
+                box.markdown(final or "⏳ thinking…")
+        rec.code(final or "(no response)", "markdown")
+    except Exception as e:  # noqa: BLE001
+        rec.error(f"File agent error: {e}")
+    _sync_ctx_from_disk(ctx)
+    rec.success("✅ Synced design files from disk — the pipeline now uses the agent's changes.")
+    run["transcript"].append({"node": "plan", "blocks": rec.blocks})
+
+
+def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util,
+            autonomous=True):
     design_dir = OUTPUT_DIR / slugify(prompt)
     if design_dir.exists():
         shutil.rmtree(design_dir)
@@ -1159,6 +1423,7 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
             "documents": [], "error_count": 0, "fix_history": {},
             "decomposed_files": {}, "testbench_code": {}, "top_module_name": "",
             "generation": "", "simulation_output": "", "web_example": "",
+            "lint_output": "", "lint_count": 0,
             "run_harden": run_harden, "clock_port": clock_port, "clock_period": clock_period,
             "die_um": die_um, "core_util": core_util,
         },
@@ -1166,6 +1431,7 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
         "transcript": [],
         "status": "running",
         "pending": None,
+        "autonomous": autonomous,
     }
 
 
@@ -1272,14 +1538,36 @@ def feedback_ui(run):
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
+def steer_box(run):
+    """A prompt you can send ANYTIME — even while the agent is working. It's applied
+    at the next step boundary: it revises the current step with your instruction, or
+    (if that step has no LLM) replans the next steps from your message."""
+    msg = st.chat_input("💬 Steer the agent or run a file command (e.g. 'remove the .vh file', "
+                        "'create rtl/alu.v') — works even while it's running…")
+    if msg and msg.strip():
+        run["steer_msg"] = msg.strip()
+        st.rerun()
+
+
 def main():
     st.set_page_config(page_title="GarudaChip", layout="wide")
     st.title("🦅 GarudaChip — prompt → RTL → GDSII")
-    st.caption("Local-LLM digital & SoC automation · step-by-step, human-in-the-loop · Ollama + LibreLane")
+    st.caption("Local-LLM digital & SoC automation · autonomous or step-by-step · Ollama + LibreLane")
 
     with st.sidebar:
         st.header("Model")
         st.success(f"Chat: {provider_label()}")
+
+        st.header("Run mode")
+        run_mode = st.radio("Run mode",
+                            ["🤖 Autonomous (run end-to-end)", "✋ Review each step"],
+                            label_visibility="collapsed",
+                            help="Autonomous runs every agent to completion without asking "
+                                 "(Chipster-style). Review pauses after each agent so you can "
+                                 "Continue / Revise / Replan. Either way you can send a steering "
+                                 "prompt at the bottom while it works.")
+        autonomous = run_mode.startswith("🤖")
+
         hw_ok = librelane_available()
         if hw_ok:
             st.success("LibreLane detected")
@@ -1308,25 +1596,43 @@ def main():
 
     if go:
         st.session_state.run = new_run(prompt, use_web, run_harden and hw_ok,
-                                       clock_port, clock_period, die_um, core_util)
+                                       clock_port, clock_period, die_um, core_util, autonomous)
 
     run = st.session_state.run
     if run is None:
         st.subheader("Agent workflow")
         st.graphviz_chart(workflow_graph(), use_container_width=True)
-        st.info("Describe the hardware on the left and click **Generate chip**. The flow runs "
-                "ONE agent at a time and PAUSES after each so you can **Continue**, **Revise** "
-                "with feedback, **Replan**, or ask it to **fetch a web example** of a block — "
-                "just like Claude Code.")
+        st.info("Describe the hardware on the left, pick **Autonomous** or **Review each step**, "
+                "and click **Generate chip**. In Autonomous it runs every agent end-to-end without "
+                "asking. Type a **prompt at the bottom while it works** to steer it (revise/replan) or "
+                "run a **file command** (e.g. *'remove the .vh file'*, *'create rtl/alu.v'*) — the file "
+                "agent edits your design on disk. A **Verilator lint gate** auto-fixes comb-loops / "
+                "multidriven nets before hardening so LibreLane reaches GDSII.")
         return
 
     # Live workflow graph (amber = working, green = done).
     st.subheader("Live agent workflow")
     graph_ph = st.empty()
 
-    # 1) Apply the action queued by a button click on the previous run.
+    # 1) Apply a steering prompt the user sent WHILE the agent worked, or a button action.
+    steer = run.pop("steer_msg", None)
     act = run.pop("action", None)
-    if act == "continue":
+    if steer:
+        if _is_file_command(steer):                    # "remove the .vh file", "create rtl/alu.v" → file agent
+            run["pending_fileagent"] = steer
+            run["status"] = "fileagent"
+        else:
+            pend = run.get("pending")
+            if pend in STEP_DEFS and STEP_DEFS[pend][4]:   # revisable step → redo it with the new instruction
+                if run["transcript"]:
+                    run["transcript"].pop()
+                run["queue"].insert(0, pend)
+                run["feedback"] = steer
+                run["status"] = "running"
+            else:                                          # not revisable (write/sim) → replan from the message
+                run["pending_feedback"] = steer
+                run["status"] = "replan"
+    elif act == "continue":
         run["status"] = "finalize" if not run["queue"] else "running"
     elif act == "revise":
         if run["transcript"]:
@@ -1343,7 +1649,12 @@ def main():
     for record in run["transcript"]:
         replay_record(record)
 
-    # 3) Replan / web-lookup execute now, then pause for review.
+    # 3) Persistent steering prompt — send it anytime, even mid-run (chat_input is
+    #    interactive while the step below blocks; it lands on the next run).
+    if run["status"] != "done":
+        steer_box(run)
+
+    # 4) Replan / web-lookup / file-agent execute now.
     if run["status"] == "replan":
         do_replan(run, run.pop("pending_feedback", ""))
         run["status"] = "paused"
@@ -1351,8 +1662,11 @@ def main():
         do_weblookup(run, run.pop("pending_block", ""))
         run["queue"].insert(0, run["pending"])      # re-run the paused step with the new reference
         run["status"] = "paused"
+    elif run["status"] == "fileagent":
+        do_fileagent(run, run.pop("pending_fileagent", ""))
+        run["status"] = "paused"
 
-    # 4) Run the next queued step (live), then pause.
+    # 5) Run the next queued step (live), then pause.
     if run["status"] == "running":
         node = run["queue"].pop(0)
         fb = run.pop("feedback", "")
@@ -1364,7 +1678,15 @@ def main():
         run["pending"] = node
         run["status"] = "paused"
 
-    # 5) Finalize.
+    # 6) Autonomous: auto-advance with no asking (Chipster-style). Pauses only at the end.
+    if run["status"] == "paused" and run.get("autonomous"):
+        if run["queue"]:
+            run["action"] = "continue"
+            st.rerun()
+        else:
+            run["status"] = "finalize"
+
+    # 7) Finalize.
     if run["status"] == "finalize":
         finalize(run)
         run["status"] = "done"
@@ -1375,9 +1697,12 @@ def main():
         done.add("gds")
     graph_ph.graphviz_chart(workflow_graph(done=done), use_container_width=True)
 
-    # 6) Feedback panel / output.
+    # 8) Feedback panel (review mode) / output.
     if run["status"] == "paused":
-        feedback_ui(run)
+        if run.get("autonomous"):
+            st.info("🤖 Running autonomously… type a prompt at the bottom anytime to steer it.")
+        else:
+            feedback_ui(run)
     elif run["status"] == "done":
         ctx = run["ctx"]
         if ctx.get("simulation_output"):

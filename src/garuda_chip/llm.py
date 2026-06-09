@@ -76,6 +76,15 @@ def get_chat_model(temperature: float = 0.2, **kwargs):
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             temperature=temperature,
             reasoning=think,
+            # --- Anti-repetition / runaway-generation guards ---
+            # Small local models (esp. qwen) fall into degenerate loops where they
+            # emit the SAME line(s) forever (e.g. "// We will assume … // But the
+            # prompt says …"). A repeat penalty discourages the cycle, and a hard
+            # num_predict cap guarantees generation STOPS even if a loop slips
+            # through (otherwise it streams until OLLAMA_TIMEOUT). Tunable via .env.
+            repeat_penalty=float(os.getenv("OLLAMA_REPEAT_PENALTY", "1.18")),
+            repeat_last_n=int(os.getenv("OLLAMA_REPEAT_LAST_N", "256")),
+            num_predict=int(os.getenv("OLLAMA_NUM_PREDICT", "8192")),
             # Ollama caps the context at 2048 tokens by DEFAULT regardless of the
             # model's real window (qwen3.5 supports up to ~1M). That truncates the
             # RAG prompt and makes the model return NOTHING — the empty-output bug.
