@@ -114,6 +114,41 @@ def librelane_available() -> bool:
     return shutil.which(LIBRELANE_BIN) is not None
 
 
+# --------------------------------------------------------------------------- #
+# Persistent agent memory — lessons/fixes that survive across runs
+# --------------------------------------------------------------------------- #
+MEMORY_FILE = DATA_DIR / "agent_memory.json"
+
+
+def load_memory() -> dict:
+    try:
+        return json.loads(MEMORY_FILE.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def save_memory(mem: dict) -> None:
+    try:
+        MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # keep the store bounded
+        items = list(mem.items())[-200:]
+        MEMORY_FILE.write_text(json.dumps(dict(items), indent=2))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def remember_fix(error_sig: str, hint: str) -> None:
+    if not (error_sig and hint):
+        return
+    mem = load_memory()
+    mem[error_sig[:200]] = hint[:4000]
+    save_memory(mem)
+
+
+def recall_fix(error_sig: str) -> str:
+    return load_memory().get((error_sig or "")[:200], "")
+
+
 def find_verilator() -> str | None:
     """Locate verilator even if it isn't on PATH — LibreLane pulls it into its Nix
     closure (not exposed as a profile binary), so fall back to the Nix store / env."""
@@ -171,7 +206,13 @@ VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY 
    `assign a=b; assign b=a;`). Break the loop — register the feedback in an `always
    @(posedge clk)`, or drive the output from sequential logic, not a self-referential wire.
 8. An `output` must have exactly ONE source — never both an `assign` and an `always`
-   block writing the same output (Verilator MULTIDRIVEN)."""
+   block writing the same output (Verilator MULTIDRIVEN).
+9. NO `wire`/net declaration INSIDE an `always` block — that is illegal ("Syntax in
+   assignment statement l-value"). Nets are declared at MODULE scope. For an
+   intermediate value inside `always`, either declare a module-scope `wire`+`assign`,
+   or use a procedural `reg`/`integer` (declared at module scope or the top of a named
+   begin/end) with blocking `=`. Example fix: move `wire signed [7:0] q0 = q[15:8];`
+   OUT of the always block to module scope as `wire signed [7:0] q0 = q[15:8];`."""
 
 
 # ---- Live workflow graph (highlights the agent currently working) ---------- #
@@ -399,6 +440,50 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
     except Exception as e:  # noqa: BLE001
         rec.warning(f"Crawl failed ({e}).")
         return []
+
+
+def _error_query(err: str) -> str:
+    """Turn a compiler/lint error log into a concise web-search query (strip the file
+    paths/line numbers and prefer the MOST DESCRIPTIVE error message, not generic
+    'syntax error', so the search is actually about the real problem)."""
+    cands = []
+    for line in (err or "").splitlines():
+        low = line.lower()
+        if "error" in low or "syntax" in low:
+            msg = re.sub(r"^.*?:\s*\d+:?\s*", "", line)            # drop "path:line:"
+            msg = re.sub(r"/[\w./\-]+\.s?vh?", "", msg).strip()     # drop leftover file paths
+            if len(msg) > 8 and msg.lower().strip(". ") not in ("syntax error", "error", "%error"):
+                cands.append(msg)
+    if cands:
+        return ("verilog " + max(cands, key=len))[:140]            # the most specific message
+    first = next((l.strip() for l in (err or "").splitlines() if l.strip()), "")
+    return ("verilog " + re.sub(r"^.*?:\s*\d+:?\s*", "", first))[:140]
+
+
+def _auto_research(query: str, rec: "Recorder") -> str:
+    """Autonomously search the WEB for how to fix an error and summarize the fix —
+    the corrector calls this on its own when it's stuck (no human needed)."""
+    rec.caption(f"🌐 Searching the web for: *{query}*")
+    try:
+        with st.spinner("Searching the web for a fix…"):
+            urls = _web_search(query, n_github=2, n_other=4)
+        docs = _crawl_urls(urls, rec, limit=4)
+        if not docs:
+            rec.caption("No usable web results.")
+            return ""
+        body = "\n\n".join(d.page_content[:1500] for d in docs[:3])
+        summary = clean_llm_output(stream_to(
+            get_chat_model(temperature=0.2),
+            "From these web results, explain CONCISELY how to fix this Verilog error and show the "
+            f"CORRECT code pattern (a few lines).\n\nERROR: {query}\n\nWEB RESULTS:\n{body}",
+            rec.placeholder(),
+        ))
+        rec.markdown("**🌐 Web fix hint:**")
+        rec.code(summary[:1500], "markdown")
+        return f"WEB FIX HINT for '{query}':\n{summary}"
+    except Exception as e:  # noqa: BLE001
+        rec.caption(f"Web research failed ({e}).")
+        return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -634,6 +719,8 @@ def agent_web(rec, ctx, feedback=""):
 
 
 def agent_generate(rec, ctx, feedback=""):
+    if ctx.get("deep_steps"):                 # run this node AS a deep agent (planning + web + files)
+        return _deep_generate(rec, ctx, feedback)
     llm = get_chat_model(temperature=0.2)
     prompt = ChatPromptTemplate.from_template(
         """You are an expert Verilog HDL designer.
@@ -929,6 +1016,21 @@ def agent_fix_design(rec, ctx, feedback=""):
         rec.caption(f"⛔ {len(past)} earlier fix(es) of `{faulty}` failed — all are shown to the model "
                     "with an explicit 'do NOT reproduce these' so it stops looping on the same code.")
     rec.caption(f"Attempt {attempt + 1} · temperature {temp:.2f} (raised each retry to avoid the same fix).")
+
+    # DEEP-AGENT BEHAVIOR: when stuck (≥2 prior failed fixes of this file), the corrector
+    # researches the error ITSELF — first from persistent MEMORY, else live from the WEB —
+    # and injects the fix into its own prompt. Re-researches every few attempts if needed.
+    if len(past) >= 2 and (len(past) - 2) % 3 == 0:
+        sig = _error_query(err)
+        remembered = recall_fix(sig)
+        if remembered:
+            ctx["web_example"] = remembered
+            rec.caption(f"🧠 Recalled a remembered fix for this error: *{sig}*")
+        else:
+            hint = _auto_research(sig, rec)
+            if hint:
+                ctx["web_example"] = hint
+                remember_fix(sig, hint)   # persist so the next run solves it instantly
 
     prior_block = "\n\n".join(
         f"FAILED ATTEMPT #{i + 1} (already tried — it did NOT work, do not reproduce it):\n"
@@ -1411,8 +1513,81 @@ def do_fileagent(run, msg):
     run["transcript"].append({"node": "plan", "blocks": rec.blocks})
 
 
+# --------------------------------------------------------------------------- #
+# "Every agent is a deep agent" — run a graph node AS a deepagents agent
+# --------------------------------------------------------------------------- #
+def _step_tools(rec):
+    """Step-specific tools every deep-agent node gets, on top of the file tools:
+    autonomous WEB research and persistent MEMORY recall — so each node can plan,
+    research the internet, and remember, like Claude."""
+    from langchain_core.tools import tool
+
+    @tool
+    def search_web(query: str) -> str:
+        """Search the web for reference HDL implementations or how to fix a specific
+        error, and return a concise summary with a correct code pattern."""
+        return _auto_research(query, rec) or "(no useful web results)"
+
+    @tool
+    def recall_memory(topic: str) -> str:
+        """Recall a remembered fix/lesson for an error message or topic from past runs."""
+        return recall_fix(_error_query(topic)) or recall_fix(topic) or "(nothing remembered yet)"
+
+    return [search_web, recall_memory]
+
+
+def run_deep_agent(rec, base_dir, goal, extra_tools=None, instructions=None, temperature=0.2):
+    """Build + stream a per-step deep agent (planning + file + web + memory tools),
+    rendering its agent graph + live plan/tool-calls. Returns its final message text."""
+    from deep_agent import build_step_agent, INSTRUCTIONS as DEEP_INSTRUCTIONS
+
+    agent = build_step_agent(base_dir, extra_tools=extra_tools,
+                             instructions=instructions or DEEP_INSTRUCTIONS, temperature=temperature)
+    dot = _agent_graphviz(agent)
+    if dot is not None:
+        rec.markdown("**🕸️ Agent graph:**")
+        rec.graphviz(dot)
+    box = rec.placeholder()
+    final = ""
+    for state in agent.stream({"messages": [{"role": "user", "content": goal}]},
+                              stream_mode="values", config={"recursion_limit": 60}):
+        final = _format_deep_state(state)
+        box.markdown(final or "⏳ thinking…")
+    return final
+
+
+def _deep_generate(rec, ctx, feedback=""):
+    """The Verilog Generator AS a deep agent: it plans, may research the web, writes the
+    RTL to disk with its file tools, and returns the code — same ctx['generation'] output
+    the rest of the graph consumes."""
+    rec.caption("🧠 Deep-agent generation (planning + web research + file tools).")
+    design_dir = Path(ctx["design_dir"])
+    refs = ""
+    if ctx.get("documents"):
+        refs = "\n\nREFERENCE CONTEXT:\n" + "\n\n".join(
+            f"{d.metadata.get('source','')}\n{d.page_content[:800]}" for d in ctx["documents"][:6])
+    goal = (
+        f"Design complete, synthesizable Verilog-2001 for this hardware: {ctx['query']}.\n"
+        + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + "Plan the sub-modules with write_todos. Use search_web if you need a reference design or "
+        "to recall how a block is built. Then WRITE the full RTL to rtl/<module>.v with "
+        "write_file_disk, and finally reply with the COMPLETE top-level Verilog in one ```verilog block.\n"
+        + _ref_context(ctx) + refs[:4000]
+    )
+    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.2)
+    gen = extract_code_block(final)
+    if not gen.strip():                       # agent may have written files instead of inlining code
+        _sync_ctx_from_disk(ctx)
+        vs = sorted((design_dir / "rtl").glob("*.v"))
+        gen = vs[0].read_text() if vs else ""
+    rec.success("Generated RTL (deep agent):")
+    rec.code(gen or final[:1500] or "(no output)", language="verilog")
+    ctx["generation"] = gen
+    ctx["simulation_output"] = ""
+
+
 def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util,
-            autonomous=True):
+            autonomous=True, deep_steps=False):
     design_dir = OUTPUT_DIR / slugify(prompt)
     if design_dir.exists():
         shutil.rmtree(design_dir)
@@ -1423,7 +1598,7 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
             "documents": [], "error_count": 0, "fix_history": {},
             "decomposed_files": {}, "testbench_code": {}, "top_module_name": "",
             "generation": "", "simulation_output": "", "web_example": "",
-            "lint_output": "", "lint_count": 0,
+            "lint_output": "", "lint_count": 0, "deep_steps": deep_steps,
             "run_harden": run_harden, "clock_port": clock_port, "clock_period": clock_period,
             "die_um": die_um, "core_util": core_util,
         },
@@ -1567,6 +1742,11 @@ def main():
                                  "Continue / Revise / Replan. Either way you can send a steering "
                                  "prompt at the bottom while it works.")
         autonomous = run_mode.startswith("🤖")
+        deep_steps = st.checkbox("🧠 Deep-agent LLM steps (deepagents)", value=False,
+                                 help="Run the LLM-driven nodes (e.g. the Verilog Generator) AS "
+                                      "deepagents agents — each plans (write_todos), can research "
+                                      "the web, and uses real file tools — instead of a one-shot "
+                                      "prompt. The graph/steps are unchanged. Needs Ollama tool-calling.")
 
         hw_ok = librelane_available()
         if hw_ok:
@@ -1596,7 +1776,7 @@ def main():
 
     if go:
         st.session_state.run = new_run(prompt, use_web, run_harden and hw_ok,
-                                       clock_port, clock_period, die_um, core_util, autonomous)
+                                       clock_port, clock_period, die_um, core_util, autonomous, deep_steps)
 
     run = st.session_state.run
     if run is None:

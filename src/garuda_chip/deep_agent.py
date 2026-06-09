@@ -101,3 +101,18 @@ def build_deep_agent(base_dir: str | Path, model=None, temperature: float = 0.2)
         # built-in virtual-filesystem ones (write_file/read_file/ls/edit_file).
         builtin_tools=["write_todos"],
     )
+
+
+def build_step_agent(base_dir: str | Path, extra_tools=None, instructions: str | None = None,
+                     temperature: float = 0.2, model=None):
+    """A deep agent for ONE pipeline step ("every agent is a deep agent"). It keeps the
+    planning tool + real file tools and adds whatever step-specific tools (web research,
+    memory, …) the caller passes — all driven by the local Ollama model. The fixed graph
+    still orchestrates the steps; this just upgrades a single node's brain."""
+    tools = list(make_fs_tools(base_dir)) + list(extra_tools or [])
+    return create_deep_agent(
+        tools=tools,
+        instructions=instructions or INSTRUCTIONS,
+        model=model or get_chat_model(temperature=temperature),
+        builtin_tools=["write_todos"],
+    )
