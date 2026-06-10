@@ -608,6 +608,9 @@ def agent_plan(rec, ctx, feedback=""):
     plan = ["retrieve", "web", "generate", "decompose", "testbench", "write", "simulate"]
     if not ctx.get("use_web"):
         plan.remove("web")
+    ctx["_plan"] = plan
+    if ctx.get("deep_steps"):                 # run the Planner AS a deep agent (RLM)
+        return _deep_plan(rec, ctx, feedback)
     rec.markdown("**Planned build steps:**")
     rec.code("  →  ".join(plan), "text")
     rec.caption("After each step the flow PAUSES so you can Continue / Revise / Replan, "
@@ -648,6 +651,8 @@ def agent_web(rec, ctx, feedback=""):
     if not ctx.get("use_web"):
         rec.info("Web research disabled.")
         return
+    if ctx.get("deep_steps"):                 # run the Web Researcher AS a deep agent (RLM)
+        return _deep_web(rec, ctx, feedback)
     docs = list(ctx.get("documents", []))
     query = ctx["query"]
     cache_dir = DATA_DIR / f"faiss_github_{slugify(query, 80)}"
@@ -846,6 +851,8 @@ def agent_decompose(rec, ctx, feedback=""):
 
 
 def agent_testbench(rec, ctx, feedback=""):
+    if ctx.get("deep_steps"):                 # run the Testbench Writer AS a deep agent (RLM)
+        return _deep_testbench(rec, ctx, feedback)
     files = ctx["decomposed_files"]
     top = ctx["top_module_name"]
     top_code = files.get(f"{top}.v", next(iter(files.values())))
@@ -998,6 +1005,8 @@ def agent_lint(rec, ctx, feedback=""):
 
 
 def agent_fix_design(rec, ctx, feedback=""):
+    if ctx.get("deep_steps"):                 # run the Module Corrector AS a deep agent (RLM)
+        return _deep_fix_design(rec, ctx, feedback)
     files = dict(ctx["decomposed_files"])
     # In the sim loop this is the simulation error; in the lint loop (sim already
     # passed, so simulation_output is empty) it's the Verilator lint error.
@@ -1094,6 +1103,8 @@ BROKEN MODULE (`{name}`) — rewrite it correctly:
 
 
 def agent_fix_testbench(rec, ctx, feedback=""):
+    if ctx.get("deep_steps"):                 # run the Testbench Corrector AS a deep agent (RLM)
+        return _deep_fix_testbench(rec, ctx, feedback)
     tb = ctx.get("testbench_code", {})
     top = ctx["top_module_name"]
     name = next(iter(tb), f"{top}_tb.v")
@@ -1437,53 +1448,71 @@ def _sync_ctx_from_disk(ctx):
         ctx["testbench_code"] = tb
 
 
-def _format_deep_state(state) -> str:
-    """deepagents run state → readable transcript (plan todos + tool calls + results)."""
-    msgs = state.get("messages", [])
-    todos = state.get("todos", []) or []
-    lines = []
-    if todos:
-        lines.append("**📋 Plan:**")
-        for t in todos:
-            mark = {"completed": "✅", "in_progress": "🔄", "pending": "⬜"}.get(t.get("status"), "⬜")
-            lines.append(f"{mark} {t.get('content', '')}")
-        lines.append("")
-    for m in msgs:
-        kind = m.__class__.__name__
-        if kind == "AIMessage":
-            if getattr(m, "content", ""):
-                lines.append(str(m.content))
-            for tc in (getattr(m, "tool_calls", None) or []):
-                args = ", ".join(f"{k}={str(v)[:60]}" for k, v in (tc.get("args") or {}).items())
-                lines.append(f"🔧 `{tc.get('name')}({args})`")
-        elif kind == "ToolMessage":
-            lines.append(f"   ↳ {str(getattr(m, 'content', ''))[:300]}")
-    return "\n\n".join(lines)
+def _short(v) -> str:
+    """One-line, length-capped repr of a tool-call argument for the transcript."""
+    s = str(v).replace("\n", " ").strip()
+    return (s[:80] + "…") if len(s) > 80 else s
 
 
-def _agent_graphviz(agent):
-    """Build a graphviz Digraph of the deepagents agent (planning + tool nodes)."""
-    try:
-        g = agent.get_graph()
-        dot = graphviz.Digraph()
-        dot.attr(rankdir="LR", bgcolor="transparent")
-        dot.attr("node", shape="box", style="rounded,filled", fillcolor="#e3f2fd",
-                 color="#1565c0", fontname="sans-serif", fontsize="10")
-        dot.attr("edge", color="#90a4ae")
-        for nid, node in g.nodes.items():
-            label = str(getattr(node, "name", None) or nid)
-            dot.node(str(nid), label)
-        for e in g.edges:
-            dot.edge(str(e.source), str(e.target))
-        return dot
-    except Exception:  # noqa: BLE001
-        return None
+def _format_todos(todos) -> str:
+    if not todos:
+        return ""
+    lines = ["**📋 Plan:**"]
+    for t in todos:
+        mark = {"completed": "✅", "in_progress": "🔄", "pending": "⬜"}.get(t.get("status"), "⬜")
+        lines.append(f"- {mark} {t.get('content', '')}")
+    return "\n".join(lines)
+
+
+def _render_deep_msg(rec, m) -> str:
+    """Render ONE deepagents message as its own recorded block — the agent's reasoning,
+    each tool/task CALL (name + args), and each tool RESULT (in a collapsible box). This
+    is what makes the transcript readable: every tool and its output is shown separately,
+    instead of one giant markdown wall. Returns the assistant text if this was one."""
+    kind = m.__class__.__name__
+    text = ""
+    if kind == "AIMessage":
+        text = clean_llm_output(getattr(m, "content", "") or "").strip()
+        if text:
+            rec.markdown(text)
+        for tc in (getattr(m, "tool_calls", None) or []):
+            name, args = tc.get("name"), (tc.get("args") or {})
+            if name == "write_todos":                       # show the plan as a checklist
+                rec.markdown(_format_todos(args.get("todos", [])))
+            else:
+                argstr = " · ".join(f"{k}={_short(v)}" for k, v in args.items())
+                rec.markdown(f"🔧 **`{name}`**" + (f" · {argstr}" if argstr else ""))
+    elif kind == "ToolMessage":
+        name = getattr(m, "name", "") or "tool"
+        if name == "write_todos":                            # already shown as the checklist
+            return ""
+        out = str(getattr(m, "content", "") or "").strip()
+        lang = "verilog" if "endmodule" in out else "text"
+        rec.expander_code(f"↳ {name} output", out[:4000] or "(empty)", lang, expanded=False)
+    return text
+
+
+def _stream_deep_agent(rec, agent, goal, recursion_limit=60) -> str:
+    """Stream a deepagents agent and render its plan + every tool/task call and output
+    INCREMENTALLY as clean, recorded blocks (no agent graph). Returns the final
+    assistant text. Each message is rendered exactly once as it arrives."""
+    seen, final = 0, ""
+    with st.spinner("🧠 Deep agent working (planning · tools · sub-tasks)…"):
+        for state in agent.stream({"messages": [{"role": "user", "content": goal}]},
+                                  stream_mode="values", config={"recursion_limit": recursion_limit}):
+            msgs = state.get("messages", [])
+            for m in msgs[seen:]:
+                text = _render_deep_msg(rec, m)
+                if text:
+                    final = text
+            seen = len(msgs)
+    return final
 
 
 def do_fileagent(run, msg):
     """Run the deepagents file agent (qwen3.5:9b) on the design dir for a natural-language
-    file command ('remove the .vh file', 'create rtl/alu.v', …), show its agent graph +
-    actions, then sync the changed files back into the pipeline state."""
+    file command ('remove the .vh file', 'create rtl/alu.v', …), show its tool actions +
+    outputs, then sync the changed files back into the pipeline state."""
     from deep_agent import build_deep_agent
 
     ctx = run["ctx"]
@@ -1494,18 +1523,7 @@ def do_fileagent(run, msg):
     rec.caption(f"Command: *{msg}*")
     try:
         agent = build_deep_agent(design_dir)
-        dot = _agent_graphviz(agent)
-        if dot is not None:
-            rec.markdown("**🕸️ Agent graph:**")
-            rec.graphviz(dot)
-        box = rec.placeholder()
-        final = ""
-        with st.spinner("File agent working (planning + file tools)…"):
-            for state in agent.stream({"messages": [{"role": "user", "content": msg}]},
-                                      stream_mode="values", config={"recursion_limit": 40}):
-                final = _format_deep_state(state)
-                box.markdown(final or "⏳ thinking…")
-        rec.code(final or "(no response)", "markdown")
+        _stream_deep_agent(rec, agent, msg, recursion_limit=40)   # renders every tool call + output
     except Exception as e:  # noqa: BLE001
         rec.error(f"File agent error: {e}")
     _sync_ctx_from_disk(ctx)
@@ -1538,56 +1556,298 @@ def _step_tools(rec):
 
 def run_deep_agent(rec, base_dir, goal, extra_tools=None, instructions=None, temperature=0.2):
     """Build + stream a per-step deep agent (planning + file + web + memory tools),
-    rendering its agent graph + live plan/tool-calls. Returns its final message text."""
+    rendering EVERY tool/task call and its output as clean, recorded blocks (no agent
+    graph). Returns the agent's final assistant text."""
     from deep_agent import build_step_agent, INSTRUCTIONS as DEEP_INSTRUCTIONS
 
     agent = build_step_agent(base_dir, extra_tools=extra_tools,
                              instructions=instructions or DEEP_INSTRUCTIONS, temperature=temperature)
-    dot = _agent_graphviz(agent)
-    if dot is not None:
-        rec.markdown("**🕸️ Agent graph:**")
-        rec.graphviz(dot)
-    box = rec.placeholder()
-    final = ""
-    for state in agent.stream({"messages": [{"role": "user", "content": goal}]},
-                              stream_mode="values", config={"recursion_limit": 60}):
-        final = _format_deep_state(state)
-        box.markdown(final or "⏳ thinking…")
-    return final
+    return _stream_deep_agent(rec, agent, goal, recursion_limit=60)
+
+
+def _ctx_store_refs(ctx) -> tuple[str | None, int]:
+    """RLM context offloading: dump the reference designs (and any web-fetched
+    example) to `<design>/context/references.md` ON DISK so a deep agent PEEKS at
+    slices of it (read_file_disk / grep_files) instead of us inlining 4 KB into the
+    prompt. This is what keeps the local model's window small ('smaller this size')."""
+    design_dir = Path(ctx["design_dir"])
+    parts: List[str] = []
+    if ctx.get("web_example"):
+        parts.append("## USER-REQUESTED WEB REFERENCE\n" + ctx["web_example"])
+    for i, d in enumerate(ctx.get("documents") or []):
+        if i >= 30:
+            break
+        src = d.metadata.get("source", "ref") if hasattr(d, "metadata") else "ref"
+        body = getattr(d, "page_content", str(d))
+        parts.append(f"## ref {i} — {src}\n{body[:2000]}")
+    if not parts:
+        return None, 0
+    text = "\n\n".join(parts)
+    cdir = design_dir / "context"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "references.md").write_text(text)
+    return "context/references.md", len(text)
+
+
+def _collect_rtl_from_disk(design_dir: Path) -> str:
+    """Concatenate the RTL a deep agent wrote to rtl/ (header first) into a single
+    string for ctx['generation'] — the mechanical decomposer re-splits it verbatim."""
+    headers = sorted((design_dir / "rtl").glob("*.vh"))
+    mods = [p for p in sorted((design_dir / "rtl").glob("*.v"))
+            if "tb" not in p.name.lower() and "testbench" not in p.name.lower()]
+    return "\n\n".join(p.read_text() for p in headers + mods)
 
 
 def _deep_generate(rec, ctx, feedback=""):
-    """The Verilog Generator AS a deep agent: it plans, may research the web, writes the
-    RTL to disk with its file tools, and returns the code — same ctx['generation'] output
-    the rest of the graph consumes."""
-    rec.caption("🧠 Deep-agent generation (planning + web research + file tools).")
+    """Verilog Generator as an RLM deep agent: plans, peeks at offloaded references,
+    delegates per-module drafts to llm_query, writes RTL to disk, returns the code —
+    same ctx['generation'] the rest of the graph consumes."""
+    rec.caption("🧠 RLM deep-agent generation — plan + on-disk context + sub-LLM delegation.")
     design_dir = Path(ctx["design_dir"])
-    refs = ""
-    if ctx.get("documents"):
-        refs = "\n\nREFERENCE CONTEXT:\n" + "\n\n".join(
-            f"{d.metadata.get('source','')}\n{d.page_content[:800]}" for d in ctx["documents"][:6])
+    ref_path, ref_len = _ctx_store_refs(ctx)
+    ref_note = (
+        f"Reference designs are OFFLOADED to `{ref_path}` ({ref_len} chars). PEEK at the parts you "
+        f"need with grep_files('<keyword>') or read_file_disk('{ref_path}', start_line, max_lines) — "
+        "do NOT try to read it all.\n" if ref_path else "")
     goal = (
         f"Design complete, synthesizable Verilog-2001 for this hardware: {ctx['query']}.\n"
         + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
-        + "Plan the sub-modules with write_todos. Use search_web if you need a reference design or "
-        "to recall how a block is built. Then WRITE the full RTL to rtl/<module>.v with "
-        "write_file_disk, and finally reply with the COMPLETE top-level Verilog in one ```verilog block.\n"
-        + _ref_context(ctx) + refs[:4000]
+        + ref_note
+        + "Plan the sub-modules with write_todos. For each non-trivial sub-module you MAY delegate a "
+          "focused draft to llm_query (give it just that module's spec). Use search_web only if a "
+          "reference is genuinely missing. WRITE each module to rtl/<name>.v with write_file_disk, then "
+          "reply with the COMPLETE top-level Verilog in ONE ```verilog block.\n"
+        + VERILOG_PITFALLS
     )
     final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.2)
     gen = extract_code_block(final)
-    if not gen.strip():                       # agent may have written files instead of inlining code
-        _sync_ctx_from_disk(ctx)
-        vs = sorted((design_dir / "rtl").glob("*.v"))
-        gen = vs[0].read_text() if vs else ""
-    rec.success("Generated RTL (deep agent):")
-    rec.code(gen or final[:1500] or "(no output)", language="verilog")
+    if "endmodule" not in gen:                    # final reply was a plan/transcript, not RTL
+        _sync_ctx_from_disk(ctx)                  # → use whatever modules it wrote to disk
+        disk = _collect_rtl_from_disk(design_dir)
+        if "endmodule" in disk:
+            gen = disk
+    if "endmodule" in gen:
+        rec.success("Generated RTL (deep agent):")
+        rec.code(gen, language="verilog")
+    else:                                          # be honest instead of showing the plan as "RTL"
+        rec.error("Deep agent produced no usable Verilog (only a plan/transcript). "
+                  "Revise/Replan, or untick 🧠 RLM deep agents in the sidebar for a one-shot draft.")
+        rec.code(gen[:1500] or "(no output)", language="text")
     ctx["generation"] = gen
     ctx["simulation_output"] = ""
 
 
+def _deep_plan(rec, ctx, feedback=""):
+    """Planner (step 1) as a deep agent: plans the sub-blocks with todos and writes a
+    concise architecture note to disk. The deterministic build queue (ctx['_plan'])
+    is unchanged — this upgrades only the design reasoning."""
+    rec.caption("🧠 RLM deep-agent planner — architecture decomposition + todos.")
+    rec.markdown("**Planned build steps:**")
+    rec.code("  →  ".join(ctx["_plan"]), "text")
+    rec.caption("After each step the flow PAUSES so you can Continue / Revise / Replan.")
+    design_dir = Path(ctx["design_dir"])
+    goal = (
+        f"You are the architecture planner. Hardware to build: {ctx['query']}.\n"
+        + (f"USER STEERING: {feedback}\n" if feedback else "")
+        + "Use write_todos to outline the sub-blocks. Then WRITE a concise architecture note to "
+          "design_notes.md: the top module, each sub-module with a one-line role and its key "
+          "interface, and the main verification concerns. Keep it under ~30 lines. Reply with the note."
+    )
+    run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.3)
+
+
+def _deep_web(rec, ctx, feedback=""):
+    """Web Researcher as a deep agent: identifies the core sub-blocks, searches +
+    crawls reference HDL (via the web_research tool), and writes a reference digest to
+    disk. Crawled docs flow into ctx['documents'] for the generator's context store."""
+    from langchain_core.tools import tool as _tool
+    rec.caption("🧠 RLM deep-agent researcher — searches HDL repos, crawls, digests to disk.")
+    design_dir = Path(ctx["design_dir"])
+
+    @_tool
+    def web_research(query: str) -> str:
+        """Find references for a hardware design: 10 open-source HDL GitHub repos
+        (Verilog/VHDL/SystemVerilog CODE) PLUS 10-20 papers/web pages (KNOWLEDGE/theory),
+        crawl them all, and return a digest noting the GitHub↔web split. Pass the design
+        AND its key sub-blocks as a COMMA-SEPARATED list (first term = the whole design,
+        rest = sub-blocks) so GitHub coverage is broad. Call this EXACTLY ONCE."""
+        terms = [t.strip() for t in re.split(r"[,\n]", query) if t.strip()]
+        main = terms[0] if terms else query
+        urls = _web_search(main, similar=terms[1:6], n_github=10, n_other=15)
+        n_gh = sum("github.com" in u for u in urls)
+        rec.write(f"🔎 Found **{len(urls)}** references — **{n_gh}** HDL GitHub repos (code) "
+                  f"+ **{len(urls) - n_gh}** papers/web (knowledge); crawling all…")
+        docs = _crawl_urls(urls, rec, limit=len(urls))
+        ctx.setdefault("documents", []).extend(docs)
+        if not docs:
+            return "(no usable results)"
+        gh = [d for d in docs if "github.com" in d.metadata.get("source", "")]
+        web = [d for d in docs if "github.com" not in d.metadata.get("source", "")]
+        head = f"Crawled {len(gh)} GitHub repo(s) (code) + {len(web)} paper/web page(s) (knowledge).\n\n"
+        return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:500]}"
+                                   for d in (gh[:3] + web[:3])))[:4500]
+
+    goal = (
+        f"You are the hardware reference researcher for: {ctx['query']}.\n"
+        + (f"USER STEERING: {feedback}\n" if feedback else "")
+        + "Name the 2-3 core sub-blocks this design needs. Then call web_research EXACTLY ONCE, "
+          "passing the design AND those sub-blocks as a COMMA-SEPARATED list — one call pulls 10 "
+          "GitHub HDL repos (code) plus 10-20 papers/web (knowledge). Finally WRITE a concise "
+          "reference digest to context/research.md (per block: where it's used, a minimal interface, "
+          "and which GitHub repo implements it). Reply with the digest."
+    )
+    run_deep_agent(rec, design_dir, goal, extra_tools=[web_research] + _step_tools(rec), temperature=0.3)
+    docs_now = ctx.get("documents", [])
+    n_gh = sum("github.com" in d.metadata.get("source", "") for d in docs_now if hasattr(d, "metadata"))
+    rec.success(f"Researcher gathered {len(docs_now)} reference chunk(s) — "
+                f"{n_gh} from GitHub (code) + {len(docs_now) - n_gh} from papers/web (knowledge).")
+
+
+def _deep_testbench(rec, ctx, feedback=""):
+    """Testbench Writer as a deep agent: reads the DUT's real port list off disk and
+    writes a self-checking testbench to tb/."""
+    rec.caption("🧠 RLM deep-agent testbench writer — reads the DUT off disk, writes tb/.")
+    design_dir = Path(ctx["design_dir"])
+    top = ctx["top_module_name"]
+    files = ctx.get("decomposed_files", {})
+    header = next((f for f in files if f.endswith(".vh")), None)
+    goal = (
+        f"Write a self-checking Verilog testbench for top module `{top}`. The DUT files are on disk "
+        f"under rtl/. Read `rtl/{top}.v`" + (f" and `rtl/{header}`" if header else "")
+        + " with read_file_disk to get the EXACT port list.\n"
+        + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + (f'Include `\\`include "{header}"`.\n' if header else "")
+        + f"STRICT: `module {top}_tb;` with EMPTY ports; declare clk + every DUT input as reg and "
+          "every DUT output as wire, each EXACTLY once; clock `reg clk; initial clk=0; always #5 "
+          "clk=~clk;`; instantiate the DUT by name; apply reset; drive stimulus; check outputs; "
+          f'`$dumpfile("design.vcd"); $dumpvars(0,{top}_tb);`; print EXACTLY "Result: PASSED" or '
+          '"Result: FAILED" then `$finish;`. ONE module only.\n'
+        + f"WRITE it to tb/{top}_tb.v with write_file_disk, then reply with it in one ```verilog block."
+    )
+    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.2)
+    _sync_ctx_from_disk(ctx)
+    tb = {k: v for k, v in (ctx.get("testbench_code") or {}).items() if v.strip()}
+    if not tb:                                 # agent inlined the code instead of writing it
+        code = extract_code_block(final)
+        if code.strip():
+            (design_dir / "tb").mkdir(parents=True, exist_ok=True)
+            (design_dir / "tb" / f"{top}_tb.v").write_text(code)
+            tb = {f"{top}_tb.v": code}
+    ctx["testbench_code"] = {k: dedup_modules(v) for k, v in tb.items()}
+    if ctx["testbench_code"]:
+        rec.success(f"Testbench `{next(iter(ctx['testbench_code']))}` (deep agent):")
+        rec.code(next(iter(ctx["testbench_code"].values())), language="verilog")
+    else:
+        rec.error("Deep agent produced no testbench — Revise or Replan to retry.")
+
+
+def _deep_fix_design(rec, ctx, feedback=""):
+    """Module Corrector as an RLM deep agent: the error log is offloaded to disk; the
+    agent peeks at it + the broken module, may recall/search a fix, then rewrites the
+    module on disk. Prior failed attempts are named so it doesn't loop on the same code."""
+    rec.caption("🧠 RLM deep-agent corrector — peeks the error log on disk, may research, rewrites.")
+    design_dir = Path(ctx["design_dir"])
+    files = dict(ctx["decomposed_files"])
+    err = ctx.get("simulation_output") or ctx.get("lint_output", "")
+    faulty = next((f for f in files if f in err), None) or f"{ctx['top_module_name']}.v"
+    faulty = faulty if faulty in files else next(iter(files))
+    stem = faulty[:-2] if faulty.endswith(".v") else faulty
+    attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
+
+    cdir = design_dir / "context"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "last_error.log").write_text(err or "(no error text)")
+
+    history = dict(ctx.get("fix_history", {}))
+    past = history.get(faulty, [])
+    rec.write("**Errors offloaded to `context/last_error.log` for the agent to peek:**")
+    rec.code(err[:1800], language="text")
+    prior_note = ""
+    if past:
+        prior_note = ("Earlier fixes of this module FAILED — take a FUNDAMENTALLY different approach, "
+                      "do NOT reproduce this last attempt:\n```verilog\n" + past[-1][:1500] + "\n```\n")
+        rec.caption(f"⛔ {len(past)} earlier fix(es) failed — the last one is shown to the agent to avoid looping.")
+
+    goal = (
+        f"A Verilog module FAILED to compile/simulate. The errors are in `context/last_error.log` and "
+        f"the broken module is `rtl/{faulty}`.\n"
+        f"1) read_file_disk('context/last_error.log') and read_file_disk('rtl/{faulty}').\n"
+        "2) In ONE line name the EXACT rule you violated, then REWRITE the module to fix the real cause "
+        "(not the symptom).\n"
+        "If the error is unfamiliar, call recall_memory or search_web ONCE for the correct pattern.\n"
+        + prior_note
+        + f"Keep the module name `{stem}` and a port list compatible with the rest of the design. WRITE "
+          f"the corrected module back to rtl/{faulty} with write_file_disk, then reply with it in one "
+          "```verilog block.\n"
+        + VERILOG_PITFALLS
+    )
+    temp = min(0.2 + 0.18 * attempt, 0.85)
+    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=temp)
+
+    fixed = extract_code_block(final)
+    disk = design_dir / "rtl" / faulty
+    if fixed.strip() and "module" in fixed:    # prefer the inlined block; mirror it to disk
+        disk.write_text(fixed)
+    elif disk.exists():                        # else trust what the agent wrote to disk
+        fixed = disk.read_text()
+    else:
+        fixed = files[faulty]
+    files[faulty] = fixed
+    history[faulty] = past + [fixed]
+    rec.success(f"Corrected `{faulty}` (deep agent):")
+    rec.code(fixed, language="verilog")
+    ctx["decomposed_files"] = files
+    ctx["fix_history"] = history
+
+
+def _deep_fix_testbench(rec, ctx, feedback=""):
+    """Testbench Corrector as an RLM deep agent: regenerates the testbench from the DUT
+    on disk, given the offloaded error log."""
+    rec.caption("🧠 RLM deep-agent testbench corrector — regenerates from the DUT on disk.")
+    design_dir = Path(ctx["design_dir"])
+    tb = ctx.get("testbench_code", {})
+    top = ctx["top_module_name"]
+    name = next(iter(tb), f"{top}_tb.v")
+    err = ctx.get("simulation_output", "")
+    attempt = ctx.get("error_count", 0)
+
+    cdir = design_dir / "context"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "last_error.log").write_text(err or "(no error text)")
+    rec.write("**Errors offloaded to `context/last_error.log`:**")
+    rec.code(err[:1800], language="text")
+
+    goal = (
+        f"The testbench `{name}` for module `{top}` FAILED — errors are in `context/last_error.log`.\n"
+        f"Read it and `rtl/{top}.v` with read_file_disk, then write a BRAND-NEW correct self-checking "
+        "testbench FROM SCRATCH (do not reuse the broken structure).\n"
+        + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + f"STRICT: `module {name[:-2] if name.endswith('.v') else name};` EMPTY ports; clk + DUT inputs "
+          "as reg, outputs as wire, each once; `always #5 clk=~clk;`; instantiate DUT by name; reset; "
+          f'stimulus; check; `$dumpfile("design.vcd"); $dumpvars(0,{top}_tb);`; print EXACTLY '
+          '"Result: PASSED" or "Result: FAILED" then `$finish;`. ONE module.\n'
+        + f"WRITE it to tb/{name} with write_file_disk, then reply with it in one ```verilog block."
+    )
+    temp = min(0.3 + 0.18 * attempt, 0.9)
+    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=temp)
+
+    code = extract_code_block(final)
+    disk = design_dir / "tb" / name
+    if code.strip() and "module" in code:
+        disk.write_text(code)
+    elif disk.exists():
+        code = disk.read_text()
+    new_tb = {name: dedup_modules(code)} if code.strip() else dict(tb)
+    history = dict(ctx.get("fix_history", {}))
+    history[name] = history.get(name, []) + [next(iter(new_tb.values()), "")]
+    rec.success("Corrected testbench (deep agent):")
+    rec.code(next(iter(new_tb.values()), "(none)"), language="verilog")
+    ctx["testbench_code"] = new_tb
+    ctx["fix_history"] = history
+
+
 def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util,
-            autonomous=True, deep_steps=False):
+            autonomous=True, deep_steps=True):
     design_dir = OUTPUT_DIR / slugify(prompt)
     if design_dir.exists():
         shutil.rmtree(design_dir)
@@ -1742,11 +2002,14 @@ def main():
                                  "Continue / Revise / Replan. Either way you can send a steering "
                                  "prompt at the bottom while it works.")
         autonomous = run_mode.startswith("🤖")
-        deep_steps = st.checkbox("🧠 Deep-agent LLM steps (deepagents)", value=False,
-                                 help="Run the LLM-driven nodes (e.g. the Verilog Generator) AS "
-                                      "deepagents agents — each plans (write_todos), can research "
-                                      "the web, and uses real file tools — instead of a one-shot "
-                                      "prompt. The graph/steps are unchanged. Needs Ollama tool-calling.")
+        deep_steps = st.checkbox("🧠 RLM deep agents (recursive)", value=True,
+                                 help="Run EVERY LLM node (Planner, Web Researcher, Verilog Generator, "
+                                      "Testbench Writer, both Correctors) as a Recursive-Language-Model "
+                                      "deep agent: it plans (write_todos), OFFLOADS big context to disk and "
+                                      "PEEKS slices, DELEGATES focused sub-tasks to fresh local-LLM calls "
+                                      "(llm_query) or sub-agents (task), and builds up RTL in files — so the "
+                                      "9B model never holds it all at once. The graph/steps are unchanged. "
+                                      "Untick to fall back to fast one-shot prompts.")
 
         hw_ok = librelane_available()
         if hw_ok:
