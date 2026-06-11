@@ -2437,14 +2437,6 @@ def main():
             kinds = ", ".join(f"{k}:{v}" for k, v in sorted((s.get("by_kind") or {}).items()))
             st.caption(f"🗄️ Knowledge store: **{s.get('total', 0)}** items"
                        + (f" ({kinds})" if kinds else ""))
-            if st.button("📥 Ingest example corpus", use_container_width=True,
-                         help="Load examples/verilog_designs/ into the knowledge store for recall."):
-                with st.spinner("Ingesting examples/verilog_designs…"):
-                    n = mem.ingest_corpus(REPO_ROOT / "examples" / "verilog_designs")
-                st.success(f"Ingested {n} files into the knowledge store.")
-                st.rerun()
-        else:
-            st.caption("🗄️ Knowledge store offline — `docker compose up -d` to enable recall.")
 
         st.header("Run mode")
         run_mode = st.radio("Run mode",
