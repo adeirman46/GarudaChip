@@ -40,3 +40,4 @@ examples/verilog_designs/**/runs/
 # --- Caches ---
 .cache/
 output/
+.claude
