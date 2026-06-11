@@ -143,13 +143,34 @@ def save_memory(mem: dict) -> None:
 def remember_fix(error_sig: str, hint: str) -> None:
     if not (error_sig and hint):
         return
-    mem = load_memory()
+    mem = load_memory()                       # fast local cache (agent_memory.json)
     mem[error_sig[:200]] = hint[:4000]
     save_memory(mem)
+    # ALSO persist to the durable knowledge store (pgvector + MinIO) so the lesson is
+    # shared across runs/machines and surfaces in semantic recall — the agent stops
+    # repeating the same mistake.
+    try:
+        from memory_store import get_memory
+        get_memory().remember(
+            "fix", f"ERROR: {error_sig}\n\nFIX: {hint}",
+            source="auto-fix", title=error_sig[:120], tags="fix")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def recall_fix(error_sig: str) -> str:
-    return load_memory().get((error_sig or "")[:200], "")
+    hit = load_memory().get((error_sig or "")[:200], "")
+    if hit:
+        return hit
+    # fall back to durable semantic recall of past fixes
+    try:
+        from memory_store import get_memory
+        items = get_memory().recall(error_sig or "", kind="fix", k=1)
+        if items:
+            return items[0].get("text", "")
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
 
 
 def find_verilator() -> str | None:
@@ -332,21 +353,71 @@ def _docs_from_recall(items) -> List[Document]:
 HDL_SET = {"Verilog", "SystemVerilog", "VHDL"}
 
 
-def _github_hdl_repos(query: str, limit: int) -> List[str]:
-    """ONE GitHub repo-search call per query, post-filtered to HDL languages by
-    the repo's `language` field — keeps us under the 10-req/min unauthenticated
-    rate limit while guaranteeing every hit is real Verilog/VHDL/SystemVerilog."""
+# Filler words that hurt a GitHub repo search — repo search matches names/topics,
+# not prose, so "riscv 8-bit like picorv using fixed point" must become "riscv picorv".
+_SEARCH_STOP = {
+    "a", "an", "the", "of", "for", "and", "to", "in", "on", "with", "using", "like",
+    "that", "this", "my", "your", "please", "make", "build", "create", "design",
+    "designs", "implement", "implementation", "module", "modules", "support", "based",
+    "is", "it", "bit", "bits", "fixed", "point", "simple", "small", "tiny", "basic",
+    "want", "need", "generate", "verilog", "vhdl", "systemverilog", "hdl", "chip",
+}
+
+
+def _hdl_keywords(text: str, n: int = 4) -> List[str]:
+    """Distill a (possibly verbose) request into the few salient search keywords — the
+    distinctive nouns a GitHub/web search actually needs (e.g. 'riscv', 'picorv', 'alu')."""
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_]+", (text or "").lower())
+    out: List[str] = []
+    for w in words:
+        if w in _SEARCH_STOP or len(w) < 3 or w in out:
+            continue
+        out.append(w)
+    return out[:n]
+
+
+def _ddg_github(query: str, limit: int) -> List[str]:
+    """Fallback repo finder via DuckDuckGo `site:github.com` — works when the GitHub
+    API is rate-limited or the prose query matched nothing (this is what makes a search
+    for 'picorv' actually surface YosysHQ/picorv32)."""
     out: List[str] = []
     try:
-        import requests
+        from ddgs import DDGS
+        kw = " ".join(_hdl_keywords(query, 3)) or query
+        for res in DDGS().text(f"{kw} verilog site:github.com", max_results=limit * 3):
+            m = re.match(r"(https://github\.com/[^/]+/[^/#?]+)", res.get("href", ""))
+            if m and m.group(1) not in out and "/topics/" not in m.group(1):
+                out.append(m.group(1))
+                if len(out) >= limit:
+                    break
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
-        r = requests.get(
-            "https://api.github.com/search/repositories",
-            params={"q": f"{query} verilog", "sort": "stars", "per_page": 25},
-            headers={"Accept": "application/vnd.github+json"},
-            timeout=12,
-        )
-        if r.ok:
+
+def _github_hdl_repos(query: str, limit: int) -> List[str]:
+    """Find real HDL repos with SHORT keyword queries (repo search hates prose), an
+    optional token to dodge rate limits, and a DuckDuckGo `site:github.com` fallback."""
+    out: List[str] = []
+    headers = {"Accept": "application/vnd.github+json"}
+    tok = os.getenv("GITHUB_TOKEN")
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    kws = _hdl_keywords(query, 4)
+    # try the strongest 2-3 keywords together, then the single strongest — short wins
+    candidates = [q for q in dict.fromkeys(
+        [" ".join(kws[:3]), " ".join(kws[:2]), kws[0] if kws else query.strip()]) if q]
+    try:
+        import requests
+        for q in candidates:
+            if len(out) >= limit:
+                break
+            r = requests.get(
+                "https://api.github.com/search/repositories",
+                params={"q": f"{q} verilog", "sort": "stars", "per_page": 20},
+                headers=headers, timeout=12)
+            if not r.ok:
+                break          # rate-limited/error → stop hitting the API, use the fallback
             for it in r.json().get("items", []):
                 if it.get("language") in HDL_SET:
                     u = it.get("html_url")
@@ -356,7 +427,11 @@ def _github_hdl_repos(query: str, limit: int) -> List[str]:
                             break
     except Exception:  # noqa: BLE001
         pass
-    return out
+    if len(out) < max(2, limit // 2):     # API thin or rate-limited → DDG site:github.com
+        for u in _ddg_github(query, limit):
+            if u not in out:
+                out.append(u)
+    return out[:limit]
 
 
 def _web_search(query: str, similar: List[str] | None = None,
@@ -448,6 +523,110 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
     except Exception as e:  # noqa: BLE001
         rec.warning(f"Crawl failed ({e}).")
         return []
+
+
+def _download_github_code(repo_url: str, save, max_files: int = 6) -> None:
+    """Download a handful of real HDL files (.v/.sv/.vh/.vhd) from a GitHub repo."""
+    import requests
+    m = re.search(r"github\.com/([^/]+)/([^/#?]+)", repo_url)
+    if not m:
+        return
+    user, repo = m.group(1), m.group(2).replace(".git", "")
+    h = {"Accept": "application/vnd.github+json"}
+    tok = os.getenv("GITHUB_TOKEN")
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    try:
+        info = requests.get(f"https://api.github.com/repos/{user}/{repo}", headers=h, timeout=12)
+        if not info.ok:
+            return
+        branch = info.json().get("default_branch", "main")
+        tree = requests.get(
+            f"https://api.github.com/repos/{user}/{repo}/git/trees/{branch}?recursive=1",
+            headers=h, timeout=15)
+        if not tree.ok:
+            return
+        paths = [t["path"] for t in tree.json().get("tree", [])
+                 if t.get("type") == "blob"
+                 and t["path"].lower().endswith((".v", ".sv", ".vh", ".svh", ".vhd"))][:max_files]
+        for path in paths:
+            raw = requests.get(
+                f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}", timeout=15)
+            if raw.ok and raw.text.strip():
+                save(f"{repo}__{path.replace('/', '_')}", raw.content)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _download_references(urls: List[str], design_dir, rec: "Recorder" = None,
+                         max_repos: int = 4, max_files: int = 6, max_pdfs: int = 10) -> int:
+    """DOWNLOAD the actual reference artifacts found by the web researcher — PDF papers
+    (arxiv/*.pdf) and real HDL code from GitHub — and store them in the knowledge store
+    (blob → MinIO, row+embedding → pgvector). This is what makes the store grow with
+    real papers/code, not just crawled text snippets."""
+    import requests
+    refs = Path(design_dir) / "context" / "refs"
+    refs.mkdir(parents=True, exist_ok=True)
+    saved: List[Path] = []
+
+    def save(name: str, data: bytes) -> None:
+        safe = re.sub(r"[^\w.\-]", "_", name)[:90] or "ref"
+        p = refs / safe
+        try:
+            p.write_bytes(data)
+            saved.append(p)
+        except Exception:  # noqa: BLE001
+            pass
+
+    pdfs = repos = 0
+    for u in urls:
+        try:
+            is_pdf = u.endswith(".pdf") or "arxiv.org/abs/" in u or "arxiv.org/pdf/" in u
+            if is_pdf and pdfs < max_pdfs:
+                pdf_url = u
+                if "arxiv.org/abs/" in u:
+                    pid = u.split("/abs/")[-1].split("?")[0].strip("/")
+                    pdf_url = f"https://arxiv.org/pdf/{pid}.pdf"
+                r = requests.get(pdf_url, timeout=25)
+                if r.ok and r.content[:4] == b"%PDF":
+                    nm = pdf_url.rstrip("/").split("/")[-1]
+                    save(nm if nm.endswith(".pdf") else nm + ".pdf", r.content)
+                    pdfs += 1
+            elif "github.com/" in u and repos < max_repos:
+                repos += 1
+                _download_github_code(u, save, max_files)
+        except Exception:  # noqa: BLE001
+            continue
+
+    n = 0
+    mem = get_memory()
+    if mem.enabled and saved:
+        design = Path(design_dir).name
+        for p in saved:
+            if mem.ingest_file(p, design=design, source=f"webref:{design}"):
+                n += 1
+    if rec and saved:
+        rec.success(f"📥 Downloaded **{len(saved)}** reference file(s) "
+                    f"({pdfs} PDF paper(s) + code) → stored {n} in the knowledge store.")
+    return n
+
+
+def _store_web_docs(docs, ctx) -> int:
+    """Persist crawled paper/web TEXT into the knowledge store (kind=paper for web,
+    code for GitHub) so it's semantically recallable in future runs."""
+    mem = get_memory()
+    if not (getattr(mem, "enabled", False) and docs):
+        return 0
+    design = Path(ctx["design_dir"]).name
+    n = 0
+    for d in docs:
+        src = d.metadata.get("source", "web") if hasattr(d, "metadata") else "web"
+        body = getattr(d, "page_content", "") or ""
+        kind = "code" if "github.com" in str(src) else "paper"
+        if body and mem.remember(kind, body[:6000], design=design, source=str(src),
+                                 title=str(src)[:120], tags="web"):
+            n += 1
+    return n
 
 
 def _error_query(err: str) -> str:
@@ -2019,42 +2198,54 @@ def _deep_web(rec, ctx, feedback=""):
     rec.caption(
         "🧠 RLM deep-agent researcher — searches HDL repos, crawls, digests to disk.")
     design_dir = Path(ctx["design_dir"])
+    _state = {"calls": 0}
 
     @_tool
     def web_research(query: str) -> str:
-        """Find references for a hardware design: 10 open-source HDL GitHub repos
-        (Verilog/VHDL/SystemVerilog CODE) PLUS 10-20 papers/web pages (KNOWLEDGE/theory),
-        crawl them all, and return a digest noting the GitHub↔web split. Pass the design
-        AND its key sub-blocks as a COMMA-SEPARATED list (first term = the whole design,
-        rest = sub-blocks) so GitHub coverage is broad. Call this EXACTLY ONCE."""
+        """Search GitHub for HDL repos + the web for papers, crawl them, and store the
+        real code/PDFs. Pass SHORT KEYWORDS only (comma-separated), e.g.
+        'riscv, picorv, alu, multiplier' — NOT a sentence. Call this ONCE; you cannot
+        improve results by calling it again."""
+        _state["calls"] += 1
+        if _state["calls"] > 1:                       # hard stop the retry loop
+            n = len(ctx.get("documents", []))
+            return (f"STOP — you already searched and have {n} reference(s). Do NOT call "
+                    "web_research again; write the digest to context/research.md NOW from "
+                    "what you have plus your own knowledge.")
+        # distill whatever the model passed (keywords OR a sentence) into good search terms
         terms = [t.strip() for t in re.split(r"[,\n]", query) if t.strip()]
-        main = terms[0] if terms else query
-        urls = _web_search(main, similar=terms[1:6], n_github=10, n_other=15)
+        kws = _hdl_keywords(", ".join(terms) or ctx["query"], 5) or [ctx["query"]]
+        main, similar = kws[0], kws[1:5]
+        rec.caption("🔑 Search keywords: " + ", ".join(f"`{k}`" for k in kws))
+        urls = _web_search(main, similar=similar, n_github=10, n_other=12)
         n_gh = sum("github.com" in u for u in urls)
         rec.write(f"🔎 Found **{len(urls)}** references — **{n_gh}** HDL GitHub repos (code) "
-                  f"+ **{len(urls) - n_gh}** papers/web (knowledge); crawling all…")
+                  f"+ **{len(urls) - n_gh}** papers/web (knowledge); crawling…")
         docs = _crawl_urls(urls, rec, limit=len(urls))
         ctx.setdefault("documents", []).extend(docs)
+        _download_references(urls, design_dir, rec)   # real PDFs + code → knowledge store
+        _store_web_docs(docs, ctx)
         if not docs:
-            return "(no usable results)"
+            return ("No pages crawled. Do NOT search again — write the digest from your own "
+                    "knowledge of this design now.")
         gh = [d for d in docs if "github.com" in d.metadata.get("source", "")]
-        web = [d for d in docs if "github.com" not in d.metadata.get(
-            "source", "")]
-        head = f"Crawled {len(gh)} GitHub repo(s) (code) + {len(web)} paper/web page(s) (knowledge).\n\n"
-        return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:500]}"
-                                   for d in (gh[:3] + web[:3])))[:4500]
+        web = [d for d in docs if "github.com" not in d.metadata.get("source", "")]
+        head = (f"Done — crawled {len(gh)} GitHub repo(s) + {len(web)} paper/web page(s). "
+                "Now WRITE context/research.md; do NOT call web_research again.\n\n")
+        return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:400]}"
+                                   for d in (gh[:3] + web[:3])))[:4000]
 
     goal = (
         f"You are the hardware reference researcher for: {ctx['query']}.\n"
         + (f"USER STEERING: {feedback}\n" if feedback else "")
-        + "Name the 2-3 core sub-blocks this design needs. Then call web_research EXACTLY ONCE, "
-          "passing the design AND those sub-blocks as a COMMA-SEPARATED list — one call pulls 10 "
-          "GitHub HDL repos (code) plus 10-20 papers/web (knowledge). Finally WRITE a concise "
-          "reference digest to context/research.md (per block: where it's used, a minimal interface, "
-          "and which GitHub repo implements it). Reply with the digest."
+        + "Do NOT narrate or explain. In ONE step: call web_research ONCE with a few SHORT "
+          "KEYWORDS (comma-separated, e.g. 'riscv, picorv, alu, multiplier' — never a full "
+          "sentence). Then WRITE a concise reference digest to context/research.md (per "
+          "sub-block: a minimal interface + which GitHub repo implements it) and reply with it. "
+          "If a search returns little, do NOT search again — just write the digest."
     )
     run_deep_agent(rec, design_dir, goal, extra_tools=[
-                   web_research] + _step_tools(rec, design_dir), temperature=0.3)
+                   web_research] + _step_tools(rec, design_dir), temperature=0.2)
     docs_now = ctx.get("documents", [])
     n_gh = sum("github.com" in d.metadata.get("source", "")
                for d in docs_now if hasattr(d, "metadata"))
