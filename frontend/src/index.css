@@ -90,13 +90,21 @@ body {
   border-radius: 7px; padding: 4px 9px; color: var(--muted);
 }
 
-/* ---- transcript node card ---- */
+/* assistant bubble — the run lives inside one avatar'd message, like ChatGPT/Claude */
+.msg.assistant .body { max-width: 100%; }
+.msg .who .working { color: var(--accent); margin-left: 10px; font-weight: 400; font-size: 12px; }
+.msg .who .working .dot { display: inline-block; }
+.final { margin-top: 6px; padding: 10px 13px; border-left: 2px solid var(--accent);
+         background: var(--bg-2); border-radius: 0 8px 8px 0; }
+.final p:first-child { margin-top: 0; }
+
+/* ---- transcript step card (a tool-use block within the assistant turn) ---- */
 .node {
-  border: 1px solid var(--border); border-radius: 12px; margin: 14px 0;
+  border: 1px solid var(--border); border-radius: 10px; margin: 10px 0;
   background: var(--bg-2); overflow: hidden;
 }
 .node > .head {
-  padding: 11px 15px; border-bottom: 1px solid var(--border); font-weight: 600;
+  padding: 9px 13px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px;
   background: var(--bg-3); display: flex; align-items: center; gap: 8px;
 }
 .node .desc { color: var(--muted); font-weight: 400; font-size: 12px; }

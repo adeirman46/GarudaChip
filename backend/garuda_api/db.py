@@ -272,6 +272,17 @@ def get_run(run_id: str) -> dict | None:
     return _iso(_mem["run"].get(run_id)) if run_id in _mem["run"] else None
 
 
+def runs_for_chat(chat_id: str) -> list[dict]:
+    """All runs of a chat (id, message_id, status, transcript) in order — so the UI can
+    show each user turn's own assistant response (proper chat alternation)."""
+    if _engine:
+        rows = _q("SELECT id, message_id, status, transcript FROM run WHERE chat_id=:id "
+                  "ORDER BY created_at", id=chat_id).mappings().all()
+        return [_iso(dict(r)) for r in rows]
+    return [_iso(r) for r in sorted((x for x in _mem["run"].values() if x["chat_id"] == chat_id),
+                                    key=lambda r: r["created_at"])]
+
+
 def latest_run_for_chat(chat_id: str) -> dict | None:
     if _engine:
         r = _q("SELECT * FROM run WHERE chat_id=:id ORDER BY created_at DESC LIMIT 1",

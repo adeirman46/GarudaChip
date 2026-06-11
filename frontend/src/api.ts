@@ -11,7 +11,7 @@ export const api = {
       method: "POST", headers: J, body: JSON.stringify({ title }),
     })).json();
   },
-  async getChat(id: string): Promise<{ chat: Chat; messages: Message[]; run: any; transcript: any[] }> {
+  async getChat(id: string): Promise<{ chat: Chat; messages: Message[]; run: any; transcript: any[]; runs: any[] }> {
     return (await fetch(`/api/chats/${id}`)).json();
   },
   async deleteChat(id: string): Promise<void> {
@@ -34,6 +34,12 @@ export const api = {
 
   async pauseRun(runId: string): Promise<void> {
     await fetch(`/api/runs/${runId}/pause`, { method: "POST" });
+  },
+
+  async steerRun(runId: string, message: string): Promise<void> {
+    await fetch(`/api/runs/${runId}/steer`, {
+      method: "POST", headers: J, body: JSON.stringify({ message }),
+    });
   },
 
   /** Subscribe to a run's SSE stream. Returns an unsubscribe fn. */

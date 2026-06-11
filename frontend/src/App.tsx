@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { api } from "./api";
 import { BlockView } from "./Block";
 import { DEFAULT_CONSTRAINTS } from "./types";
@@ -19,6 +20,11 @@ export default function App() {
   const [pausing, setPausing] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeStats | null>(null);
+  // each finished run's transcript, keyed by the user message that triggered it (so the
+  // chat alternates User → Assistant → User → Assistant). The LIVE run uses `transcript`,
+  // anchored to `runMsgId`.
+  const [pastRuns, setPastRuns] = useState<Record<string, TranscriptRecord[]>>({});
+  const [runMsgId, setRunMsgId] = useState<string | null>(null);
 
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -42,7 +48,11 @@ export default function App() {
     setChatId(id);
     const data = await api.getChat(id);
     setMessages(data.messages || []);
-    setTranscript(data.transcript || []);
+    const byMsg: Record<string, TranscriptRecord[]> = {};
+    (data.runs || []).forEach((r: any) => { if (r.message_id) byMsg[r.message_id] = r.transcript || []; });
+    setPastRuns(byMsg);
+    setRunMsgId(data.run?.message_id ?? null);
+    setTranscript(data.run?.transcript || []);
     setRunId(data.run?.id ?? null);
     setRunning((data.run?.status || "done") === "running");
     setPausing(false);
@@ -52,6 +62,7 @@ export default function App() {
     if (running && runId) api.pauseRun(runId);   // starting a new chat stops the current run
     unsubRef.current?.();
     setChatId(null); setMessages([]); setTranscript([]); setRunId(null); setRunning(false);
+    setPastRuns({}); setRunMsgId(null);
     setOpts({ ...DEFAULT_CONSTRAINTS });
     setShowConstraints(true);   // pop the constraints picker out on every new chat
   }
@@ -85,6 +96,9 @@ export default function App() {
         const updated = { ...last, blocks: [...last.blocks, block] };
         return [...t.slice(0, -1), updated];
       });
+    } else if (e.type === "trim") {
+      // continue is re-running the interrupted step → remove its partial card
+      setTranscript((t) => t.slice(0, -1));
     } else if (e.type === "knowledge") {
       // store changed at a meaningful event (research / fix / verified design)
       setKnowledge((k) => ({ total: e.total, by_kind: k?.by_kind || {} }));
@@ -98,28 +112,40 @@ export default function App() {
 
   async function send() {
     if (!prompt.trim() || running) return;
+    if (running && runId) api.pauseRun(runId);   // never run two at once in a chat
     let cid = chatId;
     if (!cid) { const c = await api.createChat(); cid = c.id; setChatId(c.id); await refreshChats(); }
 
+    const tmpId = "tmp-" + Date.now();
     const userMsg: Message = {
-      id: "tmp", chat_id: cid!, role: "user", content: prompt,
+      id: tmpId, chat_id: cid!, role: "user", content: prompt,
       files: files.map((f) => ({ name: f.name, kind: f.type.includes("pdf") ? "pdf" : f.type.startsWith("image") ? "image" : "file" })),
       created_at: new Date().toISOString(),
     };
-    const isContinue = /^(continue|please continue|keep going|resume|carry on|lanjut)/i.test(prompt.trim());
+    // archive the previous turn's transcript under its message, then start a FRESH turn
+    setPastRuns((p) => (runMsgId ? { ...p, [runMsgId]: transcript } : p));
     setMessages((m) => [...m, userMsg]);
-    if (!isContinue) setTranscript([]);   // continue → keep the existing transcript, append to it
+    setTranscript([]);
+    setRunMsgId(tmpId);
     setRunning(true);
     setPausing(false);
 
     const sentPrompt = prompt, sentFiles = files;
     setPrompt(""); setFiles([]); setShowConstraints(false);
 
-    const { run } = await api.sendMessage(cid!, sentPrompt, sentFiles, opts);
+    const { message, run } = await api.sendMessage(cid!, sentPrompt, sentFiles, opts);
+    setMessages((m) => m.map((x) => (x.id === tmpId ? { ...x, id: message.id } : x)));
+    setRunMsgId(message.id);     // anchor this turn's live transcript to the real message
     setRunId(run.id);
     refreshChats();
-    newRunRef.current = true;     // this run's first step starts a fresh card below
+    newRunRef.current = true;
     unsubRef.current = api.streamRun(run.id, applyEvent);
+  }
+
+  function steer() {
+    if (!prompt.trim() || !runId || !running) return;
+    api.steerRun(runId, prompt.trim());   // applied as feedback to the next step
+    setPrompt("");
   }
 
   return (
@@ -161,34 +187,59 @@ export default function App() {
             </div>
           ) : null}
 
-          {messages.map((m) => (
-            <div key={m.id} className={"msg " + m.role}>
-              <div className="avatar">{m.role === "user" ? "🧑" : "🦅"}</div>
-              <div className="body">
-                <div className="who">{m.role === "user" ? "You" : "GarudaChip"}</div>
-                <div>{m.content}</div>
-                {m.files?.length ? (
-                  <div className="files">
-                    {m.files.map((f, i) => (
-                      <span key={i} className="chip">{f.kind === "image" ? "🖼️" : f.kind === "pdf" ? "📄" : "📎"} {f.name}</span>
-                    ))}
+          {/* proper chat alternation: each user turn, then ITS assistant response */}
+          {messages.map((m) => {
+            if (m.role !== "user") {
+              // assistant conclusion / pause / crash note
+              return (
+                <div key={m.id} className="msg assistant">
+                  <div className="avatar">🦅</div>
+                  <div className="body"><div className="final"><ReactMarkdown>{m.content}</ReactMarkdown></div></div>
+                </div>
+              );
+            }
+            const turn = m.id === runMsgId ? transcript : (pastRuns[m.id] || []);
+            const live = m.id === runMsgId && running;
+            return (
+              <Fragment key={m.id}>
+                <div className="msg user">
+                  <div className="avatar">🧑</div>
+                  <div className="body">
+                    <div className="who">You</div>
+                    <div>{m.content}</div>
+                    {m.files?.length ? (
+                      <div className="files">
+                        {m.files.map((f, i) => (
+                          <span key={i} className="chip">{f.kind === "image" ? "🖼️" : f.kind === "pdf" ? "📄" : "📎"} {f.name}</span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            </div>
-          ))}
-
-          {transcript.map((node, i) => (
-            <div key={i} className="node">
-              <div className="head">
-                <span>{STEP_EMOJI[node.node] || "•"}</span>
-                <span>{titleFor(node)}</span>
-              </div>
-              <div className="blocks">
-                {node.blocks.map((b, j) => <BlockView key={j} block={b} runId={runId} />)}
-              </div>
-            </div>
-          ))}
+                </div>
+                {turn.length > 0 && (
+                  <div className="msg assistant">
+                    <div className="avatar">🦅</div>
+                    <div className="body">
+                      <div className="who">
+                        GarudaChip{live && <span className="working"><span className="dot" /> working…</span>}
+                      </div>
+                      {turn.map((node, i) => (
+                        <div key={i} className="node">
+                          <div className="head">
+                            <span>{STEP_EMOJI[node.node] || "•"}</span>
+                            <span>{titleFor(node)}</span>
+                          </div>
+                          <div className="blocks">
+                            {node.blocks.map((b, j) => <BlockView key={j} block={b} runId={runId} />)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
         </div>
 
         <div className="composer">
@@ -208,9 +259,13 @@ export default function App() {
               </div>
             )}
             <textarea
-              value={prompt} placeholder="Describe the hardware, or steer the run…"
+              value={prompt}
+              placeholder={running ? "Steer the agent — applied at the next step (Enter to send)…"
+                                   : "Describe the hardware, or steer the run…"}
               onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); running ? steer() : send(); }
+              }}
             />
             <div className="row">
               <label className="iconbtn" title="Attach image / PDF / spec">
@@ -228,15 +283,19 @@ export default function App() {
               </span>
               <span className="spacer" />
               {running ? (
-                <button className="iconbtn-round stop"
-                        onClick={() => {
-                          if (runId) api.pauseRun(runId);  // tell backend to stop (kills subprocess)
-                          unsubRef.current?.();             // detach the stream now
-                          setRunning(false);                // UI is free immediately
-                        }}
-                        title="Stop (state saved — say 'continue' to resume)">
-                  <span className="sq" />
-                </button>
+                <>
+                  <button className="iconbtn-round" disabled={!prompt.trim()} onClick={steer}
+                          title="Send a steering message — applied at the next step">↑</button>
+                  <button className="iconbtn-round stop"
+                          onClick={() => {
+                            if (runId) api.pauseRun(runId);  // tell backend to stop (kills subprocess)
+                            unsubRef.current?.();             // detach the stream now
+                            setRunning(false);                // UI is free immediately
+                          }}
+                          title="Stop (state saved — say 'continue' to resume)">
+                    <span className="sq" />
+                  </button>
+                </>
               ) : (
                 <button className="iconbtn-round" disabled={!prompt.trim()} onClick={send}
                         title="Send">↑</button>

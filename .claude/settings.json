@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(read CID RUN)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST http://localhost:8016/api/runs/__TRACKED_VAR__/steer -H 'Content-Type: application/json' -d '{\"message\":\"focus on picorv\"}')"
+    ]
+  }
+}

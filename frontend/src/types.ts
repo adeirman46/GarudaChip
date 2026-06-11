@@ -66,5 +66,6 @@ export const DEFAULT_CONSTRAINTS: RunConstraints = {
 export type RunEvent =
   | { type: "step"; node: string }
   | { type: "block"; node: string; kind: string; payload: any[] }
-  | { type: "knowledge"; total: number }   // store changed at a meaningful event
+  | { type: "trim" }                        // drop the trailing partial card (continue re-runs it)
+  | { type: "knowledge"; total: number }    // store changed at a meaningful event
   | { type: "end"; status: string };

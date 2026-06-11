@@ -1815,8 +1815,14 @@ def _render_deep_msg(rec, m) -> str:
 def _stream_deep_agent(rec, agent, goal, recursion_limit=60) -> str:
     """Stream a deepagents agent and render its plan + every tool/task call and output
     INCREMENTALLY as clean, recorded blocks (no agent graph). Returns the final
-    assistant text. Each message is rendered exactly once as it arrives."""
+    assistant text. Each message is rendered exactly once as it arrives.
+
+    Loop guard: if the model repeats the SAME tool call (e.g. grepping the same pattern
+    over and over), stop the agent so it can't spin forever — the caller then proceeds
+    with whatever it has (and the step's own 'did it produce output?' check decides)."""
     seen, final = 0, ""
+    calls: Dict[str, int] = {}
+    stop = False
     with st.spinner("🧠 Deep agent working (planning · tools · sub-tasks)…"):
         for state in agent.stream({"messages": [{"role": "user", "content": goal}]},
                                   stream_mode="values", config={"recursion_limit": recursion_limit}):
@@ -1825,7 +1831,16 @@ def _stream_deep_agent(rec, agent, goal, recursion_limit=60) -> str:
                 text = _render_deep_msg(rec, m)
                 if text:
                     final = text
+                for tc in (getattr(m, "tool_calls", None) or []):
+                    sig = f"{tc.get('name')}|{json.dumps(tc.get('args', {}), sort_keys=True)[:300]}"
+                    calls[sig] = calls.get(sig, 0) + 1
+                    if calls[sig] >= 3:          # same exact call 3× → it's stuck
+                        stop = True
             seen = len(msgs)
+            if stop:
+                rec.warning("↩︎ The agent repeated the same tool call — stopping it so it "
+                            "doesn't spin. Proceeding with what it has.")
+                break
     return final
 
 

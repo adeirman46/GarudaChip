@@ -90,7 +90,8 @@ def get_chat(chat_id: str):
         raise HTTPException(404, "chat not found")
     run = db.latest_run_for_chat(chat_id)
     return {"chat": chat, "messages": db.get_messages(chat_id),
-            "run": run, "transcript": (run or {}).get("transcript", [])}
+            "run": run, "transcript": (run or {}).get("transcript", []),
+            "runs": db.runs_for_chat(chat_id)}
 
 
 @app.delete("/api/chats/{chat_id}")
@@ -145,6 +146,16 @@ async def send_message(
 def pause_run(run_id: str):
     ok = runner.request_pause(run_id)
     return {"ok": ok, "paused": ok}
+
+
+class SteerBody(BaseModel):
+    message: str
+
+
+@app.post("/api/runs/{run_id}/steer")
+def steer_run(run_id: str, body: SteerBody):
+    """Steer a LIVE run: the message is applied as feedback to the next step."""
+    return {"ok": runner.request_steer(run_id, body.message)}
 
 
 # --- SSE live stream of a run ----------------------------------------------
