@@ -18,6 +18,9 @@ The model is ALWAYS get_chat_model() (Ollama). deepagents' Anthropic default
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import List
 
@@ -57,7 +60,15 @@ How to work (RLM loop):
 3. BUILD UP in files. Write intermediate and final RTL to `rtl/<module>.v` with
    `write_file_disk` instead of holding it all in your reply.
 4. Use `write_todos` to plan multi-step work and track progress.
-5. VERIFY before finishing — re-read what you wrote and check it against the rules.
+5. COMPUTE data in Python when the hardware is data-driven. For LUTs (relu, softmax,
+   sigmoid, sin/cos), filter coefficients, or NN weights, use `run_python` (numpy /
+   pytorch / matplotlib) to generate and QUANTIZE the values to the correct format
+   (signed/unsigned int, or Qm.n fixed-point), WRITE them to a memory file (e.g.
+   `rtl/relu_lut.mem`) and load it from Verilog with `$readmemh`/`$readmemb` — or
+   bake the constants straight into the RTL. `pip_install` anything you need first.
+   You can also use `run_python` to test an algorithm or a concept from a paper, or
+   to read an attached PDF/image (e.g. pillow/pypdf) before designing.
+6. VERIFY before finishing — re-read what you wrote and check it against the rules.
 - {PITFALLS}
 - Before editing a file, read it first. After writing, confirm the file path.
 """
@@ -180,6 +191,76 @@ def make_rlm_tools(temperature: float = 0.2, model=None) -> List:
     return [llm_query]
 
 
+def make_python_tools(base_dir: str | Path, timeout: int = 300) -> List:
+    """A real Python sandbox for the agent: `run_python` (execute a snippet, capture
+    output) and `pip_install` (fetch libraries on demand). This lets a node PROTOTYPE
+    in Python before writing Verilog — build/quantize LUTs (relu, softmax, sin) and
+    filter/NN coefficients with numpy/torch, test a paper's algorithm, or parse an
+    attached PDF/image — and drop the results (e.g. a `.mem` file) next to the RTL.
+    Scripts run with the current interpreter, cwd = the design dir, with a timeout so a
+    runaway can't hang the app."""
+    base = Path(base_dir).resolve()
+
+    @tool
+    def run_python(code: str) -> str:
+        """Run a Python snippet in the design directory and return its stdout/stderr.
+        Use it to COMPUTE data for hardware before writing Verilog: build a LUT
+        (relu/softmax/sigmoid/sin), filter taps, or NN weights with numpy/torch,
+        QUANTIZE to int or Qm.n fixed-point, and WRITE them to a file —
+        `open('rtl/relu_lut.mem','w')` of hex/bin lines that Verilog loads with
+        `$readmemh`/`$readmemb` — or just print the constants to bake into the RTL.
+        Also good for testing an algorithm/paper concept, or reading an attached
+        PDF/image (pip_install pypdf / pillow first). The working dir is the design
+        dir, so relative paths like 'rtl/...' resolve there. matplotlib is forced to
+        the headless 'Agg' backend — savefig to a file, never show(). Keep prints
+        SMALL: you only get back the last ~6000 characters."""
+        work = base / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        script = work / "_snippet.py"
+        # Force a headless matplotlib backend IF it's installed — never crash the
+        # snippet just because matplotlib is absent.
+        header = ("try:\n    import matplotlib; matplotlib.use('Agg')\n"
+                  "except Exception:\n    pass\n")
+        script.write_text(header + (code or ""))
+        try:
+            proc = subprocess.run([sys.executable, str(script)], cwd=str(base),
+                                  capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return f"(timed out after {timeout}s — do less work per call or split it up)"
+        except Exception as e:  # noqa: BLE001
+            return f"(could not run python: {e})"
+        out = proc.stdout + (("\n[stderr]\n" + proc.stderr) if proc.stderr else "")
+        tag = "OK" if proc.returncode == 0 else f"EXIT {proc.returncode}"
+        return f"[{tag}]\n{out.strip()[-6000:] or '(no output)'}"
+
+    @tool
+    def pip_install(packages: str) -> str:
+        """Install Python packages so `run_python` can import them. Pass names
+        space- or comma-separated, e.g. 'numpy', 'torch', 'matplotlib scipy', 'pypdf
+        pillow'. Call this BEFORE run_python when an import is missing."""
+        pkgs = [p for p in re.split(r"[,\s]+", (packages or "").strip()) if p]
+        if not pkgs:
+            return "(no packages given)"
+        attempts = []
+        if shutil.which("uv"):                       # this project is uv-managed
+            attempts.append(
+                ["uv", "pip", "install", "--python", sys.executable, *pkgs])
+        attempts.append([sys.executable, "-m", "pip", "install", *pkgs])
+        last = ""
+        for cmd in attempts:
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=600)
+                if proc.returncode == 0:
+                    return f"installed: {', '.join(pkgs)}"
+                last = (proc.stdout + proc.stderr)[-1500:]
+            except Exception as e:  # noqa: BLE001
+                last = str(e)
+        return f"(pip install failed for {', '.join(pkgs)}: {last})"
+
+    return [run_python, pip_install]
+
+
 def build_deep_agent(base_dir: str | Path, model=None, temperature: float = 0.2):
     """A deepagents agent with planning + REAL file tools + the RLM `llm_query`
     delegation primitive, driven by Ollama qwen3.5:9b. Used by the file agent."""
@@ -203,6 +284,7 @@ def build_step_agent(base_dir: str | Path, extra_tools=None, instructions: str |
     single node's brain into an RLM."""
     tools = (list(make_fs_tools(base_dir))
              + list(make_rlm_tools(temperature))
+             + list(make_python_tools(base_dir))
              + list(extra_tools or []))
     return create_deep_agent(
         tools=tools,

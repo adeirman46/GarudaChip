@@ -2,6 +2,8 @@
 
 **Toward the independence of chip design.**
 
+📦 Repository: <https://github.com/adeirman46/GarudaChip>
+
 GarudaChip is a local-first, agentic flow that turns a **plain-language prompt into a
 manufacturable digital chip layout (GDSII)** — RTL generation, functional verification,
 and full RTL-to-GDSII hardening, all driven by a **local LLM** running on your own
@@ -60,7 +62,7 @@ Everything else (uv, Ollama, Nix, LibreLane, Icarus Verilog) is installed by the
 ## Quick start
 
 ```bash
-git clone <your-fork-url> GarudaChip && cd GarudaChip
+git clone https://github.com/adeirman46/GarudaChip.git && cd GarudaChip
 
 # One-shot install: system deps, uv env, Ollama + qwen3.5:9b, Nix + LibreLane
 ./scripts/install.sh
@@ -72,6 +74,31 @@ git clone <your-fork-url> GarudaChip && cd GarudaChip
 Then open the Streamlit URL it prints (default <http://localhost:8501>).
 
 > First run downloads the model (~6 GB) and the LibreLane tools. Subsequent runs are fast.
+
+### Durable knowledge store (the RLM's long-term memory)
+
+GarudaChip remembers everything it sees and makes — generated RTL/TB, sim logs, GDS,
+crawled references, uploaded PDFs/images, and the example corpus — in **Postgres
+(pgvector)** + **MinIO object storage**, so each new design can semantically **recall**
+prior designs, fixes and references and get better over time. Recall lives in the DB
+(pgvector); there is no FAISS file.
+
+```bash
+docker compose up -d        # GarudaChip's own stack: Postgres 5433 + MinIO 9100/9101
+```
+
+It is **config-driven and optional** — if the stack is down the app falls back to the
+pure-local flow (`GARUDA_MEMORY=0` to disable). A small **seed is committed**
+(`data/knowledge_seed/`, ~0.8 MB) and **auto-loads on first run**, so a fresh clone
+starts with the example corpus + lessons rather than an empty store. Manage it with:
+
+```bash
+# inside src/garuda_chip/
+uv run python memory_store.py stats          # what's in the store
+uv run python memory_store.py ingest-corpus  # load examples/verilog_designs/
+uv run python memory_store.py export         # refresh the committed seed
+uv run python ../../scripts/migrate_faiss_to_pg.py   # (optional) import legacy FAISS indexes
+```
 
 ---
 

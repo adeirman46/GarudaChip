@@ -36,6 +36,12 @@ dependencies = [
     # --- Waveform viewer ---
     "sootty>=0.3",
     "deepagents>=0.0.5",
+    "matplotlib>=3.10.9",
+    "scipy>=1.17.1",
+    "pypdf>=6.13.1",
+    "pillow>=12.2.0",
+    "psycopg[binary]>=3.3.4",
+    "boto3>=1.43.27",
 ]
 
 [project.optional-dependencies]

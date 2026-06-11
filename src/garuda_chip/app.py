@@ -32,14 +32,15 @@ from pathlib import Path
 from typing import Dict, List
 
 import streamlit as st
+import streamlit.components.v1 as components
 import graphviz
 from dotenv import load_dotenv
-from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 
 from llm import get_chat_model, get_embeddings, provider_label
+from memory_store import get_memory
 
 load_dotenv()
 
@@ -47,7 +48,7 @@ load_dotenv()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "verilog_datasets"
 OUTPUT_DIR = REPO_ROOT / "output"          # <-- all results land here
-MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "20"))
+MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "50"))
 MAX_LINT_RETRIES = int(os.getenv("MAX_LINT_RETRIES", "10"))
 LIBRELANE_BIN = os.getenv("LIBRELANE_BIN", "librelane")
 PDK = os.getenv("PDK", "gf180mcuD")
@@ -61,7 +62,8 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 def clean_llm_output(text: str) -> str:
     if not text:
         return ""
-    stripped = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+    stripped = re.sub(r"<think>.*?</think>", "", text,
+                      flags=re.DOTALL | re.IGNORECASE).strip()
     # If the model put EVERYTHING inside <think> (no answer after), keep the raw
     # text so we can still pull a code block out of it.
     return stripped or text.strip()
@@ -70,7 +72,8 @@ def clean_llm_output(text: str) -> str:
 def extract_code_block(text: str, lang: str = "verilog") -> str:
     text = clean_llm_output(text)
     m = re.search(rf"```(?:{lang})?\s*\n(.*?)```", text, re.DOTALL)
-    code = m.group(1).strip() if m else text.replace(f"```{lang}", "").replace("```", "").strip()
+    code = m.group(1).strip() if m else text.replace(
+        f"```{lang}", "").replace("```", "").strip()
     return dedup_modules(code)
 
 
@@ -100,7 +103,7 @@ def extract_json(text: str) -> dict:
     if raw is None:
         s, e = text.find("{"), text.rfind("}")
         if s != -1 and e != -1 and e > s:
-            raw = text[s : e + 1]
+            raw = text[s: e + 1]
     if raw is None:
         raise json.JSONDecodeError("no JSON object found", text, 0)
     return json.loads(raw)
@@ -246,15 +249,19 @@ def workflow_graph(active: str | None = None, done: set | None = None):
     done = done or set()
     dot = graphviz.Digraph()
     dot.attr(rankdir="LR", bgcolor="transparent")
-    dot.attr("node", shape="box", style="rounded,filled", fontname="sans-serif", fontsize="10")
+    dot.attr("node", shape="box", style="rounded,filled",
+             fontname="sans-serif", fontsize="10")
     dot.attr("edge", color="#90a4ae")
     for key, label in WF_NODES:
         if key == active:
-            dot.node(key, label, fillcolor="#ffca28", color="#ff6f00", penwidth="2.5")  # working = amber
+            dot.node(key, label, fillcolor="#ffca28", color="#ff6f00",
+                     penwidth="2.5")  # working = amber
         elif key in done:
-            dot.node(key, label, fillcolor="#a5d6a7", color="#2e7d32")                   # done = green
+            dot.node(key, label, fillcolor="#a5d6a7",
+                     color="#2e7d32")                   # done = green
         else:
-            dot.node(key, label, fillcolor="#eceff1", color="#b0bec5", fontcolor="#546e7a")
+            dot.node(key, label, fillcolor="#eceff1",
+                     color="#b0bec5", fontcolor="#546e7a")
     for a, b in WF_EDGES:
         dot.edge(a, b)
     return dot
@@ -270,10 +277,12 @@ def stream_to(runnable, inputs, placeholder, tail: int = 9000) -> str:
     answer, thinking, n = "", "", 0
 
     def render():
-        disp = (f"💭 thinking…\n{thinking.strip()}\n\n———\n" if thinking.strip() else "")
+        disp = (
+            f"💭 thinking…\n{thinking.strip()}\n\n———\n" if thinking.strip() else "")
         disp += answer
         if not disp.strip():
-            disp = f"⏳ generating… ({n} tokens)"  # always show progress, never blank
+            # always show progress, never blank
+            disp = f"⏳ generating… ({n} tokens)"
         placeholder.code(disp[-tail:], language="markdown")
 
     try:
@@ -298,7 +307,8 @@ def stream_to(runnable, inputs, placeholder, tail: int = 9000) -> str:
     except Exception:  # noqa: BLE001
         if not answer and not thinking:
             out = runnable.invoke(inputs)
-            answer = out if isinstance(out, str) else (getattr(out, "content", "") or str(out))
+            answer = out if isinstance(out, str) else (
+                getattr(out, "content", "") or str(out))
     render()
     return answer or thinking
 
@@ -306,21 +316,17 @@ def stream_to(runnable, inputs, placeholder, tail: int = 9000) -> str:
 # --------------------------------------------------------------------------- #
 # RAG
 # --------------------------------------------------------------------------- #
-@st.cache_resource(show_spinner="Loading local embedding model…")
-def _embeddings():
-    return get_embeddings()
-
-
-@st.cache_resource(show_spinner="Loading Verilog reference index…")
-def load_vectorstore():
-    if (DATA_DIR / "index.faiss").exists():
-        try:
-            return FAISS.load_local(
-                str(DATA_DIR), _embeddings(), allow_dangerous_deserialization=True
-            )
-        except Exception as e:  # noqa: BLE001
-            st.warning(f"Could not load reference index: {e}")
-    return None
+def _docs_from_recall(items) -> List[Document]:
+    """Turn knowledge-store recall results into the Document list the generator consumes."""
+    out: List[Document] = []
+    for it in items:
+        body = it.get("text") or it.get("title") or ""
+        if not body.strip():
+            continue
+        out.append(Document(page_content=body, metadata={
+            "source": it.get("source") or it.get("design") or "knowledge",
+            "kind": it.get("kind"), "object_key": it.get("object_key")}))
+    return out
 
 
 HDL_SET = {"Verilog", "SystemVerilog", "VHDL"}
@@ -429,9 +435,11 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
                 md = _md_text(res)
                 if md and len(md) > 250:
                     is_gh = "github.com" in url
-                    out.append(Document(page_content=md[:8000], metadata={"source": url}))
+                    out.append(
+                        Document(page_content=md[:8000], metadata={"source": url}))
                     seen.append(("💻 " if is_gh else "📄 ") + url)
-                    log.code("\n".join(f"✓ {u}" for u in seen), language="text")
+                    log.code(
+                        "\n".join(f"✓ {u}" for u in seen), language="text")
             await asyncio.gather(*(fetch(u) for u in urls))
         return out
 
@@ -450,13 +458,17 @@ def _error_query(err: str) -> str:
     for line in (err or "").splitlines():
         low = line.lower()
         if "error" in low or "syntax" in low:
-            msg = re.sub(r"^.*?:\s*\d+:?\s*", "", line)            # drop "path:line:"
-            msg = re.sub(r"/[\w./\-]+\.s?vh?", "", msg).strip()     # drop leftover file paths
+            # drop "path:line:"
+            msg = re.sub(r"^.*?:\s*\d+:?\s*", "", line)
+            # drop leftover file paths
+            msg = re.sub(r"/[\w./\-]+\.s?vh?", "", msg).strip()
             if len(msg) > 8 and msg.lower().strip(". ") not in ("syntax error", "error", "%error"):
                 cands.append(msg)
     if cands:
-        return ("verilog " + max(cands, key=len))[:140]            # the most specific message
-    first = next((l.strip() for l in (err or "").splitlines() if l.strip()), "")
+        # the most specific message
+        return ("verilog " + max(cands, key=len))[:140]
+    first = next((l.strip()
+                 for l in (err or "").splitlines() if l.strip()), "")
     return ("verilog " + re.sub(r"^.*?:\s*\d+:?\s*", "", first))[:140]
 
 
@@ -527,10 +539,27 @@ def _draw(kind, payload):
             st.json(payload[0])
     elif kind == "graphviz":
         st.graphviz_chart(payload[0], use_container_width=True)
+    elif kind == "image":
+        # Stored as a PATH (+caption) so it re-renders on every Streamlit rerun.
+        path, caption = payload
+        p = Path(path)
+        if not p.exists():
+            st.caption(f"(image not found: {path})")
+        elif p.suffix.lower() == ".svg":
+            svg = p.read_text()
+            m = re.search(r'height="([\d.]+)', svg)
+            h = min(int(float(m.group(1))) + 40, 900) if m else 360
+            if caption:
+                st.caption(caption)
+            components.html(f'<div style="overflow:auto;background:#fff">{svg}</div>',
+                            height=h, scrolling=True)
+        else:
+            st.image(str(p), caption=caption or None, use_container_width=True)
 
 
 class _NullPH:
     """Stand-in for a live streaming placeholder during replay (does nothing)."""
+
     def code(self, *a, **k):
         pass
 
@@ -584,6 +613,10 @@ class Recorder:
     def graphviz(self, dot):
         self._add("graphviz", (dot,))
 
+    def image(self, path, caption=""):
+        """Show an image FILE (png/jpg/svg). Stored as a path so it survives replay."""
+        self._add("image", (str(path), caption))
+
     def placeholder(self):
         """A LIVE streaming target (st.empty) during execution; a no-op on replay."""
         return st.empty() if self.live else _NullPH()
@@ -605,7 +638,8 @@ def _ref_context(ctx) -> str:
 # Agents — each takes (rec, ctx, feedback) and mutates ctx in place
 # --------------------------------------------------------------------------- #
 def agent_plan(rec, ctx, feedback=""):
-    plan = ["retrieve", "web", "generate", "decompose", "testbench", "write", "simulate"]
+    plan = ["retrieve", "web", "generate",
+            "decompose", "testbench", "write", "simulate"]
     if not ctx.get("use_web"):
         plan.remove("web")
     ctx["_plan"] = plan
@@ -632,18 +666,25 @@ def agent_plan(rec, ctx, feedback=""):
 
 
 def agent_retrieve(rec, ctx, feedback=""):
-    vs = load_vectorstore()
-    docs: List[Document] = []
     query = ctx["query"] + (f" {feedback}" if feedback else "")
-    if vs is not None:
-        with st.spinner("Retrieving reference designs…"):
-            docs = vs.as_retriever(search_kwargs={"k": 8}).invoke(query)
-        rec.success(f"Retrieved **{len(docs)}** reference chunks from the local index.")
-        srcs = "\n".join("• " + d.metadata.get("source", "local dataset") for d in docs[:12])
-        if srcs:
-            rec.expander_code("Show retrieved sources", srcs, "text")
+    mem = get_memory()
+    docs: List[Document] = []
+    if mem.enabled:
+        with st.spinner("Recalling references from the knowledge store (pgvector)…"):
+            items = mem.recall(query, k=8)
+        docs = _docs_from_recall(items)
+        if docs:
+            rec.success(
+                f"Recalled **{len(docs)}** item(s) from the knowledge store (pgvector semantic search).")
+            srcs = "\n".join(f"• [{it.get('kind')}] {it.get('title')} — {it.get('source')}"
+                             for it in items[:12])
+            rec.expander_code("Show recalled sources", srcs, "text")
+        else:
+            rec.info("Knowledge store has nothing relevant yet — generating from scratch "
+                     "(it fills as you build / after `docker compose up` + seed).")
     else:
-        rec.warning("No local index found — generating from scratch.")
+        rec.warning("Knowledge store offline — generating from scratch. "
+                    "Run `docker compose up -d` to enable durable recall.")
     ctx["documents"] = docs
 
 
@@ -655,22 +696,23 @@ def agent_web(rec, ctx, feedback=""):
         return _deep_web(rec, ctx, feedback)
     docs = list(ctx.get("documents", []))
     query = ctx["query"]
-    cache_dir = DATA_DIR / f"faiss_github_{slugify(query, 80)}"
+    mem = get_memory()
 
-    if (cache_dir / "index.faiss").exists() and not feedback:
-        try:
-            vs = FAISS.load_local(str(cache_dir), _embeddings(), allow_dangerous_deserialization=True)
-            hits = vs.as_retriever(search_kwargs={"k": 20}).invoke(query)
-            rec.success(f"Loaded cached web index `{cache_dir.name}` ({len(hits)} chunks).")
+    # Cache = the durable knowledge store. If we already crawled references for a
+    # similar query, recall them from pgvector instead of crawling again.
+    if mem.enabled and not feedback:
+        hits = _docs_from_recall(mem.recall(query, kind="reference", k=20))
+        if len(hits) >= 5:
+            rec.success(
+                f"Recalled {len(hits)} reference chunk(s) from the knowledge store — skipping the live crawl.")
             ctx["documents"] = docs + hits
             return
-        except Exception as e:  # noqa: BLE001
-            rec.warning(f"Cache load failed ({e}); crawling live.")
 
     # Ask the LLM for close HDL building-block terms — derived from THIS request
     # (no hardcoded accelerator examples), so a RISC-V prompt searches for RISC-V.
     similar: List[str] = []
-    rec.caption("🧠 Picking similar HDL building blocks (on-topic for your prompt):")
+    rec.caption(
+        "🧠 Picking similar HDL building blocks (on-topic for your prompt):")
     try:
         with st.spinner("Thinking…"):
             raw = stream_to(
@@ -688,11 +730,13 @@ def agent_web(rec, ctx, feedback=""):
                 rec.placeholder(),
             )
         txt = clean_llm_output(raw)
-        similar = [s.strip() for s in re.split(r"[,\n]", txt) if 2 < len(s.strip()) < 50][:3]
+        similar = [s.strip() for s in re.split(r"[,\n]", txt)
+                   if 2 < len(s.strip()) < 50][:3]
     except Exception:  # noqa: BLE001
         similar = []
     if similar:
-        rec.caption("🔁 Similar-IP search terms: " + ", ".join(f"`{s}`" for s in similar))
+        rec.caption("🔁 Similar-IP search terms: " +
+                    ", ".join(f"`{s}`" for s in similar))
 
     with st.spinner("Searching GitHub (HDL) + web…"):
         urls = _web_search(query, similar=similar)
@@ -711,20 +755,26 @@ def agent_web(rec, ctx, feedback=""):
         ctx["documents"] = docs
         return
 
-    chunks = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200).split_documents(web_docs)
-    try:
-        vs = FAISS.from_documents(chunks, _embeddings())
-        vs.save_local(str(cache_dir))
-        hits = vs.as_retriever(search_kwargs={"k": 20}).invoke(query)
-        rec.success(f"Crawled {len(web_docs)} pages → cached {len(chunks)} chunks → using {len(hits)}.")
-        ctx["documents"] = docs + hits
-    except Exception as e:  # noqa: BLE001
-        rec.warning(f"Crawled {len(web_docs)} pages (cache save failed: {e}).")
-        ctx["documents"] = docs + chunks
+    chunks = RecursiveCharacterTextSplitter(
+        chunk_size=2000, chunk_overlap=200).split_documents(web_docs)
+    # Persist the crawled chunks into the durable knowledge store (pgvector + MinIO)
+    # so future runs RECALL them — this is the cache, and it grows the RLM's memory.
+    stored = 0
+    if mem.enabled:
+        slug = slugify(query, 60)
+        for c in chunks:
+            src = c.metadata.get("source", "web")
+            if mem.remember("reference", c.page_content, design=slug, source=src,
+                            title=str(src)[:120], tags="web"):
+                stored += 1
+    rec.success(f"Crawled {len(web_docs)} pages → {len(chunks)} chunks"
+                + (f" → stored {stored} in the knowledge store (recallable next time)." if stored else "."))
+    ctx["documents"] = docs + chunks
 
 
 def agent_generate(rec, ctx, feedback=""):
-    if ctx.get("deep_steps"):                 # run this node AS a deep agent (planning + web + files)
+    # run this node AS a deep agent (planning + web + files)
+    if ctx.get("deep_steps"):
         return _deep_generate(rec, ctx, feedback)
     llm = get_chat_model(temperature=0.2)
     prompt = ChatPromptTemplate.from_template(
@@ -746,7 +796,8 @@ REQUEST:
         head = _ref_context(ctx)
         if not docs:
             return head + "No reference context."
-        parts = [f"Source: {d.metadata.get('source','N/A')}\n{d.page_content[:1800]}" for d in docs[:20]]
+        parts = [
+            f"Source: {d.metadata.get('source','N/A')}\n{d.page_content[:1800]}" for d in docs[:20]]
         return head + "\n\n".join(parts)
 
     question = ctx["query"]
@@ -766,14 +817,16 @@ REQUEST:
     gen = extract_code_block(raw)
 
     if is_degenerate(gen):  # looped / empty? retry once without the (possibly huge) references
-        rec.warning("Model produced no usable RTL (empty or stuck in a loop) — retrying with a tighter prompt…")
+        rec.warning(
+            "Model produced no usable RTL (empty or stuck in a loop) — retrying with a tighter prompt…")
         with st.spinner("Retrying generation…"):
             raw = stream_to(chain, {"context": _ref_context(ctx) + "No reference context.",
                                     "question": question, "pitfalls": VERILOG_PITFALLS}, live)
         gen = extract_code_block(raw)
     if not gen.strip():
         gen = raw.strip()
-        rec.error("The model produced no Verilog. Try a simpler prompt or a larger/instruct model.")
+        rec.error(
+            "The model produced no Verilog. Try a simpler prompt or a larger/instruct model.")
         rec.code(raw[:1500] or "(completely empty response)", language="text")
         ctx["generation"] = gen
         ctx["simulation_output"] = ""
@@ -809,7 +862,8 @@ def agent_decompose(rec, ctx, feedback=""):
     # Find REAL module declarations: the `module` keyword + name followed by `(`,
     # `#`, or `;`. The trailing anchor is what skips the word "module" when it just
     # appears inside a comment (e.g. `// Top level CPU module`).
-    starts = [(m.start(), m.group(1)) for m in re.finditer(r"\bmodule\s+(\w+)\s*[#(;]", code)]
+    starts = [(m.start(), m.group(1))
+              for m in re.finditer(r"\bmodule\s+(\w+)\s*[#(;]", code)]
     blocks: List[str] = []
     names: List[str] = []
     for pos, name in starts:
@@ -831,7 +885,8 @@ def agent_decompose(rec, ctx, feedback=""):
                               f"{head}\n\n`endif // SHARED_HEADER_VH")
 
     if not blocks:
-        rec.warning("No `module … endmodule` found — keeping the output as a single file.")
+        rec.warning(
+            "No `module … endmodule` found — keeping the output as a single file.")
         m = re.search(r"module\s+(\w+)", code)
         top = m.group(1) if m else slugify(ctx["query"], 24)
         files[f"{top}.v"] = code.strip()
@@ -842,7 +897,8 @@ def agent_decompose(rec, ctx, feedback=""):
             files[f"{nm}.v"] = (inc + b.strip()) if header_name else b.strip()
 
     files = {k: v for k, v in files.items() if v.strip()}
-    rec.success(f"Top module: `{top}` · {len(files)} file(s) — split verbatim, no code changed.")
+    rec.success(
+        f"Top module: `{top}` · {len(files)} file(s) — split verbatim, no code changed.")
     for fn, c in files.items():
         rec.expander_code(f"📄 {fn}", c, "verilog" if fn.endswith(".v") else "text",
                           expanded=(fn == f"{top}.v"))
@@ -884,7 +940,8 @@ DUT (`{top}.v`):
     rec.caption("🧠 Live model output:")
     live = rec.placeholder()
     with st.spinner("Writing testbench…"):
-        resp = stream_to(prompt | llm, {"top": top, "code": top_code, "inc": inc}, live)
+        resp = stream_to(
+            prompt | llm, {"top": top, "code": top_code, "inc": inc}, live)
     try:
         tb = extract_json(resp)
         tb = {k: dedup_modules(v) for k, v in tb.items()}
@@ -911,28 +968,34 @@ def agent_write(rec, ctx, feedback=""):
         if isinstance(content, str) and content.strip():
             (tb_dir / safe).write_text(content)
             written.append(f"tb/{safe}")
-    rec.success(f"Saved {len(written)} file(s) under `{design_dir.relative_to(REPO_ROOT)}/`:")
+    rec.success(
+        f"Saved {len(written)} file(s) under `{design_dir.relative_to(REPO_ROOT)}/`:")
     rec.code("\n".join(written), language="text")
 
 
 def agent_simulate(rec, ctx, feedback=""):
     design_dir = Path(ctx["design_dir"])
-    rtl_dir, tb_dir, sim_dir = design_dir / "rtl", design_dir / "tb", design_dir / "sim"
+    rtl_dir, tb_dir, sim_dir = design_dir / \
+        "rtl", design_dir / "tb", design_dir / "sim"
     sim_dir.mkdir(parents=True, exist_ok=True)
-    vfiles = sorted(glob.glob(str(rtl_dir / "*.v"))) + sorted(glob.glob(str(tb_dir / "*.v")))
+    vfiles = sorted(glob.glob(str(rtl_dir / "*.v"))) + \
+        sorted(glob.glob(str(tb_dir / "*.v")))
     if not vfiles:
         rec.error("No Verilog files to simulate.")
         ctx["simulation_output"] = "Error: no Verilog files."
         return
-    compile_cmd = ["iverilog", "-g2005-sv", "-o", str(sim_dir / "design.vvp"), "-I", str(rtl_dir), *vfiles]
+    compile_cmd = ["iverilog", "-g2005-sv", "-o",
+                   str(sim_dir / "design.vvp"), "-I", str(rtl_dir), *vfiles]
     rec.write("**Compile:**")
     rec.code("iverilog -g2005-sv -o design.vvp -I rtl " + " ".join(os.path.basename(f) for f in vfiles),
              language="bash")
     sim_out = ""
     try:
         with st.spinner("Compiling + simulating…"):
-            subprocess.run(compile_cmd, cwd=sim_dir, capture_output=True, text=True, check=True, timeout=90)
-            proc = subprocess.run(["vvp", "design.vvp"], cwd=sim_dir, capture_output=True, text=True, timeout=90)
+            subprocess.run(compile_cmd, cwd=sim_dir,
+                           capture_output=True, text=True, check=True, timeout=90)
+            proc = subprocess.run(
+                ["vvp", "design.vvp"], cwd=sim_dir, capture_output=True, text=True, timeout=90)
         sim_out = proc.stdout
         rec.write("**Simulation output:**")
         rec.code(sim_out or "(no stdout)", language="text")
@@ -945,7 +1008,11 @@ def agent_simulate(rec, ctx, feedback=""):
         rec.error(sim_out)
 
     (sim_dir / "simulation.log").write_text(sim_out or "PASSED (no output)")
-    passed = "Result: PASSED" in sim_out or (sim_out and "ERROR" not in sim_out and "Result: FAILED" not in sim_out)
+    # Show the dumped waveform (if the testbench wrote design.vcd) — for a pass it
+    # confirms behaviour, for a fail it helps see WHY (e.g. an output stuck at 0).
+    _show_waveform(rec, sim_dir / "design.vcd", sim_dir)
+    passed = "Result: PASSED" in sim_out or (
+        sim_out and "ERROR" not in sim_out and "Result: FAILED" not in sim_out)
     if passed:
         rec.success("✅ Simulation passed.")
         ctx["simulation_output"] = ""
@@ -966,16 +1033,21 @@ def agent_lint(rec, ctx, feedback=""):
     top = ctx.get("top_module_name") or ""
     vbin = find_verilator()
     if not vbin:
-        rec.warning("Verilator not found — skipping the lint gate (it still runs inside LibreLane).")
+        rec.warning(
+            "Verilator not found — skipping the lint gate (it still runs inside LibreLane).")
         ctx["lint_output"] = ""
         return
     if not vfiles:
         rec.warning("No RTL to lint.")
         ctx["lint_output"] = ""
         return
+    # NOTE: verilator needs the include dir ATTACHED (`-I<dir>`, no space). Passed as
+    # a separate arg ("-I", dir) verilator treats <dir> as a positional top-level
+    # source and dies with "Cannot find file containing module: <dir>" — which looked
+    # like a lint failure but was really an argument-parsing bug on the rtl/ path.
     cmd = [vbin, "--lint-only", "-Wno-fatal",
            "--Werror-MULTIDRIVEN", "--Werror-LATCH", "--Werror-UNOPTFLAT",
-           "-I", str(rtl_dir)]
+           f"-I{rtl_dir}"]
     if top:
         cmd += ["--top-module", top]
     cmd += vfiles
@@ -984,7 +1056,8 @@ def agent_lint(rec, ctx, feedback=""):
              + " ".join(os.path.basename(f) for f in vfiles), language="bash")
     try:
         with st.spinner("Linting RTL…"):
-            proc = subprocess.run(cmd, cwd=str(rtl_dir), capture_output=True, text=True, timeout=120)
+            proc = subprocess.run(cmd, cwd=str(rtl_dir),
+                                  capture_output=True, text=True, timeout=120)
         out = (proc.stdout + "\n" + proc.stderr).strip()
         failed = proc.returncode != 0 or "%Error" in out
     except Exception as e:  # noqa: BLE001
@@ -998,7 +1071,8 @@ def agent_lint(rec, ctx, feedback=""):
         rec.success("✅ Lint clean — RTL is structurally sound for hardening.")
         ctx["lint_output"] = ""
         return
-    rec.error("❌ Lint found structural issues — routing to the corrector before hardening.")
+    rec.error(
+        "❌ Lint found structural issues — routing to the corrector before hardening.")
     rec.code(out[:2500], language="text")
     ctx["lint_output"] = out
     ctx["lint_count"] = ctx.get("lint_count", 0) + 1
@@ -1011,20 +1085,23 @@ def agent_fix_design(rec, ctx, feedback=""):
     # In the sim loop this is the simulation error; in the lint loop (sim already
     # passed, so simulation_output is empty) it's the Verilator lint error.
     err = ctx.get("simulation_output") or ctx.get("lint_output", "")
-    faulty = next((f for f in files if f in err), None) or f"{ctx['top_module_name']}.v"
+    faulty = next((f for f in files if f in err),
+                  None) or f"{ctx['top_module_name']}.v"
     faulty = faulty if faulty in files else next(iter(files))
     history = dict(ctx.get("fix_history", {}))
     past = history.get(faulty, [])
     tried = past + [files[faulty]]
     rec.write("**Compiler/sim errors fed to the model:**")
     rec.code(err[:1800], language="text")
-    rec.expander_code(f"Current (broken) `{faulty}` given to the corrector", files[faulty], "verilog")
+    rec.expander_code(
+        f"Current (broken) `{faulty}` given to the corrector", files[faulty], "verilog")
     attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
     temp = min(0.2 + 0.18 * attempt, 0.85)
     if past:
         rec.caption(f"⛔ {len(past)} earlier fix(es) of `{faulty}` failed — all are shown to the model "
                     "with an explicit 'do NOT reproduce these' so it stops looping on the same code.")
-    rec.caption(f"Attempt {attempt + 1} · temperature {temp:.2f} (raised each retry to avoid the same fix).")
+    rec.caption(
+        f"Attempt {attempt + 1} · temperature {temp:.2f} (raised each retry to avoid the same fix).")
 
     # DEEP-AGENT BEHAVIOR: when stuck (≥2 prior failed fixes of this file), the corrector
     # researches the error ITSELF — first from persistent MEMORY, else live from the WEB —
@@ -1039,7 +1116,8 @@ def agent_fix_design(rec, ctx, feedback=""):
             hint = _auto_research(sig, rec)
             if hint:
                 ctx["web_example"] = hint
-                remember_fix(sig, hint)   # persist so the next run solves it instantly
+                # persist so the next run solves it instantly
+                remember_fix(sig, hint)
 
     prior_block = "\n\n".join(
         f"FAILED ATTEMPT #{i + 1} (already tried — it did NOT work, do not reproduce it):\n"
@@ -1089,7 +1167,8 @@ BROKEN MODULE (`{name}`) — rewrite it correctly:
         while fixed and _norm(fixed) in seen and rerolls < 2:
             rerolls += 1
             hot = min(temp + 0.25 * rerolls, 0.95)
-            rec.caption(f"↻ Identical to a failed attempt — re-rolling hotter (temp {hot:.2f}).")
+            rec.caption(
+                f"↻ Identical to a failed attempt — re-rolling hotter (temp {hot:.2f}).")
             fixed = roll(hot)
 
     if not fixed.strip():
@@ -1169,7 +1248,8 @@ Reply with ONLY JSON: {{"{name}": "<full verilog source>"}}."""
         while next(iter(new_tb.values()), "") and _norm(next(iter(new_tb.values()))) in seen and rerolls < 2:
             rerolls += 1
             hot = min(temp + 0.25 * rerolls, 0.95)
-            rec.caption(f"↻ Identical to a failed testbench — re-rolling hotter (temp {hot:.2f}).")
+            rec.caption(
+                f"↻ Identical to a failed testbench — re-rolling hotter (temp {hot:.2f}).")
             new_tb = roll(hot)
 
     history[name] = tried + [next(iter(new_tb.values()), "")]
@@ -1227,7 +1307,8 @@ def agent_harden(rec, ctx, feedback=""):
     (chip_dir / "config.json").write_text(json.dumps(config, indent=2))
     rec.expander_code("config.json", json.dumps(config, indent=2), "json")
 
-    cmd = [LIBRELANE_BIN, "--manual-pdk", "--pdk-root", PDK_ROOT, "config.json"]
+    cmd = [LIBRELANE_BIN, "--manual-pdk",
+           "--pdk-root", PDK_ROOT, "config.json"]
     rec.write(f"**Running:** `{' '.join(cmd)}`")
     log_box = rec.placeholder()
     lines: List[str] = []
@@ -1257,9 +1338,11 @@ def agent_harden(rec, ctx, feedback=""):
         shutil.copy(gds[-1], final_gds)
         if metrics:
             (design_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
-        rec.success(f"🎉 GDSII generated → `output/{design_dir.name}/{final_gds.name}`")
+        rec.success(
+            f"🎉 GDSII generated → `output/{design_dir.name}/{final_gds.name}`")
     else:
-        rec.error(f"LibreLane finished (rc={proc.returncode}) but no GDS was produced — see log above.")
+        rec.error(
+            f"LibreLane finished (rc={proc.returncode}) but no GDS was produced — see log above.")
 
     if metrics:
         keys = {
@@ -1272,12 +1355,15 @@ def agent_harden(rec, ctx, feedback=""):
             "magic__drc__count": "DRC violations",
             "design__lvs__errors__count": "LVS errors",
         }
-        rows = [(label, metrics[k]) for k, label in keys.items() if k in metrics]
+        rows = [(label, metrics[k])
+                for k, label in keys.items() if k in metrics]
         if rows:
             rec.write("**Signoff metrics:**")
-            rec.table({"Metric": [r[0] for r in rows], "Value": [str(r[1]) for r in rows]})
+            rec.table({"Metric": [r[0] for r in rows],
+                      "Value": [str(r[1]) for r in rows]})
         rec.json(metrics)
-    ctx["harden"] = {"gds": str(final_gds) if final_gds else None, "metrics": metrics, "rc": proc.returncode}
+    ctx["harden"] = {"gds": str(
+        final_gds) if final_gds else None, "metrics": metrics, "rc": proc.returncode}
 
 
 # --------------------------------------------------------------------------- #
@@ -1286,7 +1372,7 @@ def agent_harden(rec, ctx, feedback=""):
 # (emoji, title, desc, fn, accepts_feedback)
 STEP_DEFS = {
     "plan":          ("🧭", "Planner", "Drafts the build plan + design notes.", agent_plan, True),
-    "retrieve":      ("📚", "Dataset Retriever", "RAG over the local FAISS reference index.", agent_retrieve, False),
+    "retrieve":      ("📚", "Knowledge Recall", "Semantic recall over the pgvector knowledge store.", agent_retrieve, False),
     "web":           ("🌐", "Web Researcher", "HDL GitHub repos + papers, crawled & cached.", agent_web, True),
     "generate":      ("✍️", "Verilog Generator", "The local LLM drafts synthesizable RTL.", agent_generate, True),
     "decompose":     ("🧩", "Decomposer", "Split the RTL into per-module files + header.", agent_decompose, True),
@@ -1321,10 +1407,12 @@ def advance(run, node):
         elif "lint" not in q:                         # sim passed → structural lint gate
             q.insert(0, "lint")
     elif node == "lint":
-        if ctx.get("lint_output"):                    # lint failed → fix the RTL, re-verify, re-lint
+        # lint failed → fix the RTL, re-verify, re-lint
+        if ctx.get("lint_output"):
             if ctx.get("lint_count", 0) < MAX_LINT_RETRIES:
                 q[:0] = ["fix_design", "write", "simulate", "lint"]
-            elif ctx.get("run_harden"):               # give up fixing → harden anyway (lint is non-fatal)
+            # give up fixing → harden anyway (lint is non-fatal)
+            elif ctx.get("run_harden"):
                 q.append("harden")
         elif ctx.get("run_harden"):                   # lint clean → harden if requested
             q.append("harden")
@@ -1344,35 +1432,82 @@ def execute_step(run, node, feedback=""):
 
 
 def do_replan(run, feedback):
-    """Replanner: choose the next steps from the user's feedback + latest error."""
+    """Replanner: choose the SMALLEST set of next steps that recovers the build from the
+    user's feedback + latest error. Key rule: a design already exists on disk after many
+    correction iterations — do NOT throw that work away and rebuild from zero. Default to
+    an incremental repair on the EXISTING files (fix_design → write → simulate). Only fall
+    back to the from-scratch steps (generate, decompose, testbench) when the user EXPLICITLY
+    asks to start over."""
     ctx = run["ctx"]
     rec = Recorder("🔁", "Replanner", "Revises the remaining plan from your feedback + latest state.",
                    "plan", live=True)
     known = ["retrieve", "web", "generate", "decompose", "testbench", "write", "simulate",
              "fix_design", "fix_testbench"]
-    err = ctx.get("simulation_output", "")
+    rebuild = {"generate", "decompose", "testbench"}   # full-from-scratch steps
+
+    err = ctx.get("simulation_output") or ctx.get("lint_output", "")
+    files = ctx.get("decomposed_files") or {}
+    has_design = bool(files)
+    top = ctx.get("top_module_name") or "(none yet)"
+    iters = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
+
+    # Did the user EXPLICITLY ask to discard the current design and start fresh? Only
+    # then do we allow the from-scratch steps; otherwise we keep the RTL on disk.
+    start_over = bool(re.search(
+        r"\b(from scratch|start over|start again|re-?generate|rewrite everything|"
+        r"whole design|new design|redo|scrap|throw away|ulang|dari awal)\b",
+        (feedback or "").lower()))
+
     rec.caption("🧠 Choosing the next steps…")
     raw = stream_to(
-        get_chat_model(temperature=0.3),
-        "You are the re-planner for a Verilog build agent. Output the next steps to run as a "
-        "comma-separated list using ONLY these step names: " + ", ".join(known) + ".\n"
-        "Common recoveries: regenerate from scratch = generate,decompose,testbench,write,simulate; "
-        "rebuild only the testbench = fix_testbench,write,simulate; re-fetch references then "
-        "regenerate = web,generate,decompose,testbench,write,simulate.\n\n"
-        f"USER FEEDBACK: {feedback or '(none)'}\n"
-        f"LATEST ERROR: {err[:800] or '(none)'}\n"
-        f"DESIGN: {ctx['query']}\n\n"
+        get_chat_model(temperature=0.2),
+        "You are the re-planner for a Verilog build agent. A design ALREADY EXISTS on disk and "
+        "has been through several correction iterations — do NOT discard that work. Output the "
+        "SMALLEST set of next steps that addresses the user's message, as a comma-separated list "
+        "using ONLY these step names: " + ", ".join(known) + ".\n\n"
+        "PREFER incremental repair on the EXISTING files:\n"
+        "  • a question like 'why is the output 0', or any RTL/logic bug -> fix_design\n"
+        "  • the testbench / stimulus is wrong                           -> fix_testbench\n"
+        "  • you need a reference for a sub-block                        -> web\n"
+        "Use the from-scratch steps (generate, decompose, testbench) ONLY if the user EXPLICITLY "
+        "asks to start over / regenerate / rewrite the whole design.\n"
+        "Every plan MUST end with: write, simulate.\n\n"
+        f"DESIGN: {ctx['query']}\n"
+        f"STATE: {len(files)} RTL file(s) on disk, top module `{top}`, {iters} correction "
+        f"iteration(s) already done. User asked to start over? {'YES' if start_over else 'NO'}.\n"
+        f"USER MESSAGE: {feedback or '(none)'}\n"
+        f"LATEST ERROR: {err[:800] or '(none)'}\n\n"
         "Reply ONLY with the comma-separated step list.",
         rec.placeholder(),
     )
-    picked = [s.strip() for s in re.split(r"[,\n]", clean_llm_output(raw)) if s.strip() in known]
-    if not picked:
-        picked = ["generate", "decompose", "testbench", "write", "simulate"]
-    if "simulate" not in picked:           # always end by re-verifying
-        picked += ["write", "simulate"]
-    rec.success("New plan: " + "  →  ".join(picked))
+    picked = [s.strip() for s in re.split(
+        r"[,\n]", clean_llm_output(raw)) if s.strip() in known]
+
+    # Guard rail: never rebuild from scratch over an existing design unless the user
+    # really asked for it — strip the from-scratch steps and ensure a fixer is present.
+    if has_design and not start_over:
+        picked = [s for s in picked if s not in rebuild]
+        if not any(s in picked for s in ("fix_design", "fix_testbench")):
+            picked = ["fix_design"] + picked
+    if not picked:                              # nothing usable came back from the model
+        picked = (["fix_design"] if has_design
+                  else ["generate", "decompose", "testbench"])
+
+    # de-dupe (preserve order) then always re-verify at the end
+    seen, ordered = set(), []
+    for s in picked:
+        if s not in seen and s not in ("write", "simulate"):
+            seen.add(s)
+            ordered.append(s)
+    picked = ordered + ["write", "simulate"]
+
+    mode = ("🔧 incremental fix — keeping your existing RTL" if (has_design and not start_over)
+            else "🆕 full rebuild from scratch")
+    rec.success(f"{mode}.  New plan: " + "  →  ".join(picked))
     run["queue"] = picked
-    ctx["error_count"] = 0                  # explicit replan resets the retry budget
+    # A replan grants a fresh retry budget for the NEW plan. It does NOT touch the files
+    # on disk — your corrected RTL stays exactly where it is.
+    ctx["error_count"] = 0
     run["transcript"].append({"node": "plan", "blocks": rec.blocks})
 
 
@@ -1409,7 +1544,8 @@ def do_weblookup(run, block):
     rec.markdown("**Reference summary (inputs / outputs):**")
     rec.code(summary[:2000], "markdown")
     ctx["web_example"] = f"REFERENCE for '{block}':\n{summary}\n\nSOURCE SNIPPET:\n{ref}"
-    rec.success(f"Found a reference for `{block}` — it will be injected into the next step you run.")
+    rec.success(
+        f"Found a reference for `{block}` — it will be injected into the next step you run.")
     run["transcript"].append({"node": "web", "blocks": rec.blocks})
 
 
@@ -1437,7 +1573,8 @@ def _sync_ctx_from_disk(ctx):
     design_dir = Path(ctx["design_dir"])
     rtl = {p.name: p.read_text() for p in sorted((design_dir / "rtl").glob("*"))
            if p.suffix in (".v", ".vh")}
-    tb = {p.name: p.read_text() for p in sorted((design_dir / "tb").glob("*.v"))}
+    tb = {p.name: p.read_text()
+          for p in sorted((design_dir / "tb").glob("*.v"))}
     if rtl:
         ctx["decomposed_files"] = rtl
         if f"{ctx.get('top_module_name')}.v" not in rtl:
@@ -1459,7 +1596,8 @@ def _format_todos(todos) -> str:
         return ""
     lines = ["**📋 Plan:**"]
     for t in todos:
-        mark = {"completed": "✅", "in_progress": "🔄", "pending": "⬜"}.get(t.get("status"), "⬜")
+        mark = {"completed": "✅", "in_progress": "🔄",
+                "pending": "⬜"}.get(t.get("status"), "⬜")
         lines.append(f"- {mark} {t.get('content', '')}")
     return "\n".join(lines)
 
@@ -1480,15 +1618,18 @@ def _render_deep_msg(rec, m) -> str:
             if name == "write_todos":                       # show the plan as a checklist
                 rec.markdown(_format_todos(args.get("todos", [])))
             else:
-                argstr = " · ".join(f"{k}={_short(v)}" for k, v in args.items())
-                rec.markdown(f"🔧 **`{name}`**" + (f" · {argstr}" if argstr else ""))
+                argstr = " · ".join(
+                    f"{k}={_short(v)}" for k, v in args.items())
+                rec.markdown(f"🔧 **`{name}`**" +
+                             (f" · {argstr}" if argstr else ""))
     elif kind == "ToolMessage":
         name = getattr(m, "name", "") or "tool"
         if name == "write_todos":                            # already shown as the checklist
             return ""
         out = str(getattr(m, "content", "") or "").strip()
         lang = "verilog" if "endmodule" in out else "text"
-        rec.expander_code(f"↳ {name} output", out[:4000] or "(empty)", lang, expanded=False)
+        rec.expander_code(f"↳ {name} output",
+                          out[:4000] or "(empty)", lang, expanded=False)
     return text
 
 
@@ -1523,22 +1664,140 @@ def do_fileagent(run, msg):
     rec.caption(f"Command: *{msg}*")
     try:
         agent = build_deep_agent(design_dir)
-        _stream_deep_agent(rec, agent, msg, recursion_limit=40)   # renders every tool call + output
+        # renders every tool call + output
+        _stream_deep_agent(rec, agent, msg, recursion_limit=40)
     except Exception as e:  # noqa: BLE001
         rec.error(f"File agent error: {e}")
     _sync_ctx_from_disk(ctx)
-    rec.success("✅ Synced design files from disk — the pipeline now uses the agent's changes.")
+    rec.success(
+        "✅ Synced design files from disk — the pipeline now uses the agent's changes.")
     run["transcript"].append({"node": "plan", "blocks": rec.blocks})
 
 
 # --------------------------------------------------------------------------- #
 # "Every agent is a deep agent" — run a graph node AS a deepagents agent
 # --------------------------------------------------------------------------- #
-def _step_tools(rec):
+def _wave_to_svg(vcd_path, out_svg, signals="", cycles=120) -> str | None:
+    """sootty: VCD → SVG file. Returns the path, or None if sootty can't parse it
+    (its pyvcd backend is strict and rejects some iverilog-escaped identifiers)."""
+    try:
+        from sootty import WireTrace, Visualizer, Style
+        wt = WireTrace.from_vcd(str(vcd_path))
+        n = wt.length() or cycles
+        img = Visualizer(Style.Default).to_svg(
+            wt, length=min(int(cycles), n) or n, wires=signals or "")
+        Path(out_svg).write_text(img.source)
+        return str(out_svg)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _parse_vcd(text: str):
+    """Tolerant VCD parse (handles iverilog escaped ids that pyvcd/sootty reject).
+    Returns (names, widths, series): names[id]=label, series[id]=[(time, int|None)]."""
+    names, widths = {}, {}
+    for m in re.finditer(r"\$var\s+\w+\s+(\d+)\s+(\S+)\s+([^$]+?)\s*\$end", text):
+        w, vid, nm = int(m.group(1)), m.group(2), m.group(3).strip()
+        names[vid] = nm.split("[")[0].strip().lstrip("\\")
+        widths[vid] = w
+    body = text.split("$enddefinitions", 1)[-1]
+    toks = body.split()
+    series = {vid: [] for vid in names}
+    cur, i = 0, 0
+    while i < len(toks):
+        t = toks[i]
+        if t.startswith("#"):
+            try:
+                cur = int(t[1:])
+            except ValueError:
+                pass
+        elif t[0] in "01xXzZ" and len(t) >= 2:        # scalar: value+id, no space
+            vid = t[1:]
+            if vid in series:
+                series[vid].append(
+                    (cur, 1 if t[0] == "1" else 0 if t[0] == "0" else None))
+        elif t[0] in "bB":                            # vector: 'b1010' then id
+            bits = t[1:]
+            i += 1
+            vid = toks[i] if i < len(toks) else ""
+            if vid in series:
+                try:
+                    series[vid].append((cur, int(re.sub("[xXzZ]", "0", bits), 2)))
+                except ValueError:
+                    series[vid].append((cur, None))
+        elif t[0] in "rR":                            # real change: skip its id
+            i += 1
+        i += 1
+    return names, widths, series
+
+
+def _wave_to_png(vcd_path, out_png, signals="", cycles=120) -> str | None:
+    """Fallback waveform: tolerant-parse the VCD and matplotlib step-plot it to PNG."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        names, widths, series = _parse_vcd(Path(vcd_path).read_text())
+        want = [s.strip() for s in re.split(r"[,\s]+", signals) if s.strip()]
+        ids = [vid for vid in names if series[vid]
+               and (not want or any(w.lower() in names[vid].lower() for w in want))][:12]
+        if not ids:
+            return None
+        tmax = max((series[vid][-1][0] for vid in ids), default=cycles) or cycles
+        fig, axes = plt.subplots(len(ids), 1, figsize=(10, 0.7 * len(ids) + 1),
+                                 sharex=True, squeeze=False)
+        for ax, vid in zip(axes[:, 0], ids):
+            ts = [t for t, _ in series[vid]] + [tmax]
+            vs = [v if v is not None else 0 for _, v in series[vid]]
+            vs = vs + [vs[-1] if vs else 0]
+            ax.step(ts, vs, where="post", linewidth=1.2)
+            label = f"{names[vid]}[{widths[vid]-1}:0]" if widths[vid] > 1 else names[vid]
+            ax.set_ylabel(label, rotation=0, ha="right",
+                          va="center", fontsize=8)
+            ax.margins(y=0.3)
+            ax.grid(True, alpha=0.3)
+            ax.set_yticks([])
+        axes[-1, 0].set_xlabel("time")
+        fig.tight_layout()
+        fig.savefig(out_png, dpi=110)
+        plt.close(fig)
+        return str(out_png)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _show_waveform(rec, vcd_path, out_dir, signals="", cycles=120) -> bool:
+    """Render a VCD into the transcript: sootty SVG first, matplotlib PNG fallback."""
+    vcd_path = Path(vcd_path)
+    if not vcd_path.exists():
+        return False
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    svg = _wave_to_svg(vcd_path, out_dir / "waveform.svg", signals, cycles)
+    if svg:
+        rec.image(svg, "📈 Waveform (sootty)")
+        return True
+    png = _wave_to_png(vcd_path, out_dir / "waveform.png", signals, cycles)
+    if png:
+        rec.image(png, "📈 Waveform")
+        return True
+    return False
+
+
+def _step_tools(rec, base_dir=None):
     """Step-specific tools every deep-agent node gets, on top of the file tools:
-    autonomous WEB research and persistent MEMORY recall — so each node can plan,
-    research the internet, and remember, like Claude."""
+    autonomous WEB research, persistent MEMORY recall, and DISPLAY tools (show an
+    image/plot, render a simulation waveform) — so each node can plan, research,
+    remember, and SHOW results, like Claude. `base_dir` sandboxes the display paths
+    to the design directory."""
     from langchain_core.tools import tool
+    base = Path(base_dir).resolve() if base_dir else None
+
+    def _resolve(path: str) -> Path:
+        p = (base / (path or "")).resolve() if base else Path(path or "").resolve()
+        if base and p != base and base not in p.parents:
+            raise ValueError(f"path '{path}' escapes the design directory")
+        return p
 
     @tool
     def search_web(query: str) -> str:
@@ -1551,7 +1810,87 @@ def _step_tools(rec):
         """Recall a remembered fix/lesson for an error message or topic from past runs."""
         return recall_fix(_error_query(topic)) or recall_fix(topic) or "(nothing remembered yet)"
 
-    return [search_web, recall_memory]
+    @tool
+    def show_image(path: str, caption: str = "") -> str:
+        """Display an image FILE in the transcript so the user can SEE it: a matplotlib
+        plot you saved with run_python (e.g. 'rtl/relu_lut.png'), an uploaded diagram
+        ('context/uploads/<name>'), or any .png/.jpg/.svg under the design dir. Pass a
+        path relative to the design directory."""
+        try:
+            p = _resolve(path)
+        except ValueError as e:
+            return f"(refused: {e})"
+        if not p.exists():
+            return f"(not found: {path})"
+        rec.image(str(p), caption)
+        return f"shown {path}"
+
+    @tool
+    def show_waveform(vcd_path: str = "sim/design.vcd", signals: str = "", cycles: int = 120) -> str:
+        """Render a simulation waveform (VCD) into the transcript so the user can SEE the
+        signals toggle. Defaults to 'sim/design.vcd' (what the testbench dumps via
+        $dumpfile). Optionally pass a comma-separated 'signals' filter and a 'cycles'
+        window. Uses sootty, with a matplotlib fallback."""
+        try:
+            p = _resolve(vcd_path)
+        except ValueError as e:
+            return f"(refused: {e})"
+        if not p.exists():
+            return f"(no VCD at {vcd_path} — run the simulation first)"
+        out = (base / "sim") if base else p.parent
+        ok = _show_waveform(rec, p, out, signals, int(cycles))
+        return "waveform shown" if ok else "(could not render the waveform from that VCD)"
+
+    tools = [search_web, recall_memory, show_image, show_waveform]
+
+    # --- durable knowledge store (pgvector + MinIO): recall / fetch / remember ---
+    mem = get_memory()
+    if mem.enabled:
+        @tool
+        def recall_knowledge(query: str, kind: str = "") -> str:
+            """Semantically RECALL prior knowledge from GarudaChip's long-term store —
+            past designs, fixes, references, datasheets — to reuse instead of starting
+            cold. Optionally filter kind (design|code|fix|reference|paper|gds|image|pdf).
+            Returns the best matches with their object_key; pull the full file with
+            fetch_knowledge."""
+            items = mem.recall(query, kind=kind or None, k=6)
+            if not items:
+                return "(nothing relevant in the knowledge store yet)"
+            lines = []
+            for it in items:
+                snip = (it.get("text") or "").strip().replace("\n", " ")[:400]
+                lines.append(f"[{it.get('kind')}] {it.get('title')} "
+                             f"(design={it.get('design')}, key={it.get('object_key') or '-'})\n  {snip}")
+            return "\n".join(lines)
+
+        @tool
+        def fetch_knowledge(object_key: str, dest_path: str = "") -> str:
+            """Pull a stored artifact (by its object_key from recall_knowledge) out of
+            object storage into THIS design dir so you can read it with read_file_disk.
+            Defaults to context/recall/<name>."""
+            blob = mem.get_object(object_key)
+            if blob is None:
+                return f"(no object: {object_key})"
+            dest = dest_path or f"context/recall/{object_key.split('/')[-1]}"
+            try:
+                p = _resolve(dest)
+            except ValueError as e:
+                return f"(refused: {e})"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(blob)
+            return f"fetched {object_key} -> {dest} ({len(blob)} bytes)"
+
+        @tool
+        def remember_knowledge(text: str, kind: str = "note", title: str = "") -> str:
+            """Save a durable lesson/insight to GarudaChip's long-term store so FUTURE
+            runs can recall it (e.g. a fix that worked, a synthesis gotcha, a sizing
+            rule). kind is usually 'fix' or 'note'."""
+            rid = mem.remember(kind, text, source="agent", title=title or text[:60], tags="agent")
+            return f"remembered ({rid})" if rid else "(store unavailable)"
+
+        tools += [recall_knowledge, fetch_knowledge, remember_knowledge]
+
+    return tools
 
 
 def run_deep_agent(rec, base_dir, goal, extra_tools=None, instructions=None, temperature=0.2):
@@ -1572,12 +1911,15 @@ def _ctx_store_refs(ctx) -> tuple[str | None, int]:
     prompt. This is what keeps the local model's window small ('smaller this size')."""
     design_dir = Path(ctx["design_dir"])
     parts: List[str] = []
+    if ctx.get("uploads_digest"):
+        parts.append(ctx["uploads_digest"])
     if ctx.get("web_example"):
         parts.append("## USER-REQUESTED WEB REFERENCE\n" + ctx["web_example"])
     for i, d in enumerate(ctx.get("documents") or []):
         if i >= 30:
             break
-        src = d.metadata.get("source", "ref") if hasattr(d, "metadata") else "ref"
+        src = d.metadata.get("source", "ref") if hasattr(
+            d, "metadata") else "ref"
         body = getattr(d, "page_content", str(d))
         parts.append(f"## ref {i} — {src}\n{body[:2000]}")
     if not parts:
@@ -1602,27 +1944,38 @@ def _deep_generate(rec, ctx, feedback=""):
     """Verilog Generator as an RLM deep agent: plans, peeks at offloaded references,
     delegates per-module drafts to llm_query, writes RTL to disk, returns the code —
     same ctx['generation'] the rest of the graph consumes."""
-    rec.caption("🧠 RLM deep-agent generation — plan + on-disk context + sub-LLM delegation.")
+    rec.caption(
+        "🧠 RLM deep-agent generation — plan + on-disk context + sub-LLM delegation.")
     design_dir = Path(ctx["design_dir"])
     ref_path, ref_len = _ctx_store_refs(ctx)
     ref_note = (
         f"Reference designs are OFFLOADED to `{ref_path}` ({ref_len} chars). PEEK at the parts you "
         f"need with grep_files('<keyword>') or read_file_disk('{ref_path}', start_line, max_lines) — "
         "do NOT try to read it all.\n" if ref_path else "")
+    if ctx.get("uploads_digest"):
+        ref_note += ("The user ATTACHED files/images — they're included in that context under "
+                     "'User-attached files' (and saved under context/uploads/). Use them.\n")
     goal = (
         f"Design complete, synthesizable Verilog-2001 for this hardware: {ctx['query']}.\n"
         + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
         + ref_note
         + "Plan the sub-modules with write_todos. For each non-trivial sub-module you MAY delegate a "
           "focused draft to llm_query (give it just that module's spec). Use search_web only if a "
-          "reference is genuinely missing. WRITE each module to rtl/<name>.v with write_file_disk, then "
-          "reply with the COMPLETE top-level Verilog in ONE ```verilog block.\n"
+          "reference is genuinely missing.\n"
+          "If the design is DATA-DRIVEN (a LUT for relu/softmax/sigmoid/sin, filter taps, or NN "
+          "weights), COMPUTE the values with run_python (numpy/torch) — pip_install what you need — "
+          "QUANTIZE to int or Qm.n fixed-point, write them to rtl/<name>.mem and load with "
+          "$readmemh/$readmemb, or bake the constants into the RTL.\n"
+          "WRITE each module to rtl/<name>.v with write_file_disk, then reply with the COMPLETE "
+          "top-level Verilog in ONE ```verilog block.\n"
         + VERILOG_PITFALLS
     )
-    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.2)
+    final = run_deep_agent(rec, design_dir, goal,
+                           extra_tools=_step_tools(rec, design_dir), temperature=0.2)
     gen = extract_code_block(final)
     if "endmodule" not in gen:                    # final reply was a plan/transcript, not RTL
-        _sync_ctx_from_disk(ctx)                  # → use whatever modules it wrote to disk
+        # → use whatever modules it wrote to disk
+        _sync_ctx_from_disk(ctx)
         disk = _collect_rtl_from_disk(design_dir)
         if "endmodule" in disk:
             gen = disk
@@ -1644,7 +1997,8 @@ def _deep_plan(rec, ctx, feedback=""):
     rec.caption("🧠 RLM deep-agent planner — architecture decomposition + todos.")
     rec.markdown("**Planned build steps:**")
     rec.code("  →  ".join(ctx["_plan"]), "text")
-    rec.caption("After each step the flow PAUSES so you can Continue / Revise / Replan.")
+    rec.caption(
+        "After each step the flow PAUSES so you can Continue / Revise / Replan.")
     design_dir = Path(ctx["design_dir"])
     goal = (
         f"You are the architecture planner. Hardware to build: {ctx['query']}.\n"
@@ -1653,7 +2007,8 @@ def _deep_plan(rec, ctx, feedback=""):
           "design_notes.md: the top module, each sub-module with a one-line role and its key "
           "interface, and the main verification concerns. Keep it under ~30 lines. Reply with the note."
     )
-    run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.3)
+    run_deep_agent(rec, design_dir, goal,
+                   extra_tools=_step_tools(rec, design_dir), temperature=0.3)
 
 
 def _deep_web(rec, ctx, feedback=""):
@@ -1661,7 +2016,8 @@ def _deep_web(rec, ctx, feedback=""):
     crawls reference HDL (via the web_research tool), and writes a reference digest to
     disk. Crawled docs flow into ctx['documents'] for the generator's context store."""
     from langchain_core.tools import tool as _tool
-    rec.caption("🧠 RLM deep-agent researcher — searches HDL repos, crawls, digests to disk.")
+    rec.caption(
+        "🧠 RLM deep-agent researcher — searches HDL repos, crawls, digests to disk.")
     design_dir = Path(ctx["design_dir"])
 
     @_tool
@@ -1682,7 +2038,8 @@ def _deep_web(rec, ctx, feedback=""):
         if not docs:
             return "(no usable results)"
         gh = [d for d in docs if "github.com" in d.metadata.get("source", "")]
-        web = [d for d in docs if "github.com" not in d.metadata.get("source", "")]
+        web = [d for d in docs if "github.com" not in d.metadata.get(
+            "source", "")]
         head = f"Crawled {len(gh)} GitHub repo(s) (code) + {len(web)} paper/web page(s) (knowledge).\n\n"
         return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:500]}"
                                    for d in (gh[:3] + web[:3])))[:4500]
@@ -1696,9 +2053,11 @@ def _deep_web(rec, ctx, feedback=""):
           "reference digest to context/research.md (per block: where it's used, a minimal interface, "
           "and which GitHub repo implements it). Reply with the digest."
     )
-    run_deep_agent(rec, design_dir, goal, extra_tools=[web_research] + _step_tools(rec), temperature=0.3)
+    run_deep_agent(rec, design_dir, goal, extra_tools=[
+                   web_research] + _step_tools(rec, design_dir), temperature=0.3)
     docs_now = ctx.get("documents", [])
-    n_gh = sum("github.com" in d.metadata.get("source", "") for d in docs_now if hasattr(d, "metadata"))
+    n_gh = sum("github.com" in d.metadata.get("source", "")
+               for d in docs_now if hasattr(d, "metadata"))
     rec.success(f"Researcher gathered {len(docs_now)} reference chunk(s) — "
                 f"{n_gh} from GitHub (code) + {len(docs_now) - n_gh} from papers/web (knowledge).")
 
@@ -1706,14 +2065,16 @@ def _deep_web(rec, ctx, feedback=""):
 def _deep_testbench(rec, ctx, feedback=""):
     """Testbench Writer as a deep agent: reads the DUT's real port list off disk and
     writes a self-checking testbench to tb/."""
-    rec.caption("🧠 RLM deep-agent testbench writer — reads the DUT off disk, writes tb/.")
+    rec.caption(
+        "🧠 RLM deep-agent testbench writer — reads the DUT off disk, writes tb/.")
     design_dir = Path(ctx["design_dir"])
     top = ctx["top_module_name"]
     files = ctx.get("decomposed_files", {})
     header = next((f for f in files if f.endswith(".vh")), None)
     goal = (
         f"Write a self-checking Verilog testbench for top module `{top}`. The DUT files are on disk "
-        f"under rtl/. Read `rtl/{top}.v`" + (f" and `rtl/{header}`" if header else "")
+        f"under rtl/. Read `rtl/{top}.v`" +
+        (f" and `rtl/{header}`" if header else "")
         + " with read_file_disk to get the EXACT port list.\n"
         + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
         + (f'Include `\\`include "{header}"`.\n' if header else "")
@@ -1724,9 +2085,11 @@ def _deep_testbench(rec, ctx, feedback=""):
           '"Result: FAILED" then `$finish;`. ONE module only.\n'
         + f"WRITE it to tb/{top}_tb.v with write_file_disk, then reply with it in one ```verilog block."
     )
-    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=0.2)
+    final = run_deep_agent(rec, design_dir, goal,
+                           extra_tools=_step_tools(rec, design_dir), temperature=0.2)
     _sync_ctx_from_disk(ctx)
-    tb = {k: v for k, v in (ctx.get("testbench_code") or {}).items() if v.strip()}
+    tb = {k: v for k, v in (ctx.get("testbench_code")
+                            or {}).items() if v.strip()}
     if not tb:                                 # agent inlined the code instead of writing it
         code = extract_code_block(final)
         if code.strip():
@@ -1735,8 +2098,10 @@ def _deep_testbench(rec, ctx, feedback=""):
             tb = {f"{top}_tb.v": code}
     ctx["testbench_code"] = {k: dedup_modules(v) for k, v in tb.items()}
     if ctx["testbench_code"]:
-        rec.success(f"Testbench `{next(iter(ctx['testbench_code']))}` (deep agent):")
-        rec.code(next(iter(ctx["testbench_code"].values())), language="verilog")
+        rec.success(
+            f"Testbench `{next(iter(ctx['testbench_code']))}` (deep agent):")
+        rec.code(
+            next(iter(ctx["testbench_code"].values())), language="verilog")
     else:
         rec.error("Deep agent produced no testbench — Revise or Replan to retry.")
 
@@ -1745,11 +2110,13 @@ def _deep_fix_design(rec, ctx, feedback=""):
     """Module Corrector as an RLM deep agent: the error log is offloaded to disk; the
     agent peeks at it + the broken module, may recall/search a fix, then rewrites the
     module on disk. Prior failed attempts are named so it doesn't loop on the same code."""
-    rec.caption("🧠 RLM deep-agent corrector — peeks the error log on disk, may research, rewrites.")
+    rec.caption(
+        "🧠 RLM deep-agent corrector — peeks the error log on disk, may research, rewrites.")
     design_dir = Path(ctx["design_dir"])
     files = dict(ctx["decomposed_files"])
     err = ctx.get("simulation_output") or ctx.get("lint_output", "")
-    faulty = next((f for f in files if f in err), None) or f"{ctx['top_module_name']}.v"
+    faulty = next((f for f in files if f in err),
+                  None) or f"{ctx['top_module_name']}.v"
     faulty = faulty if faulty in files else next(iter(files))
     stem = faulty[:-2] if faulty.endswith(".v") else faulty
     attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
@@ -1760,13 +2127,15 @@ def _deep_fix_design(rec, ctx, feedback=""):
 
     history = dict(ctx.get("fix_history", {}))
     past = history.get(faulty, [])
-    rec.write("**Errors offloaded to `context/last_error.log` for the agent to peek:**")
+    rec.write(
+        "**Errors offloaded to `context/last_error.log` for the agent to peek:**")
     rec.code(err[:1800], language="text")
     prior_note = ""
     if past:
         prior_note = ("Earlier fixes of this module FAILED — take a FUNDAMENTALLY different approach, "
                       "do NOT reproduce this last attempt:\n```verilog\n" + past[-1][:1500] + "\n```\n")
-        rec.caption(f"⛔ {len(past)} earlier fix(es) failed — the last one is shown to the agent to avoid looping.")
+        rec.caption(
+            f"⛔ {len(past)} earlier fix(es) failed — the last one is shown to the agent to avoid looping.")
 
     goal = (
         f"A Verilog module FAILED to compile/simulate. The errors are in `context/last_error.log` and "
@@ -1782,7 +2151,8 @@ def _deep_fix_design(rec, ctx, feedback=""):
         + VERILOG_PITFALLS
     )
     temp = min(0.2 + 0.18 * attempt, 0.85)
-    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=temp)
+    final = run_deep_agent(rec, design_dir, goal,
+                           extra_tools=_step_tools(rec, design_dir), temperature=temp)
 
     fixed = extract_code_block(final)
     disk = design_dir / "rtl" / faulty
@@ -1803,7 +2173,8 @@ def _deep_fix_design(rec, ctx, feedback=""):
 def _deep_fix_testbench(rec, ctx, feedback=""):
     """Testbench Corrector as an RLM deep agent: regenerates the testbench from the DUT
     on disk, given the offloaded error log."""
-    rec.caption("🧠 RLM deep-agent testbench corrector — regenerates from the DUT on disk.")
+    rec.caption(
+        "🧠 RLM deep-agent testbench corrector — regenerates from the DUT on disk.")
     design_dir = Path(ctx["design_dir"])
     tb = ctx.get("testbench_code", {})
     top = ctx["top_module_name"]
@@ -1829,7 +2200,8 @@ def _deep_fix_testbench(rec, ctx, feedback=""):
         + f"WRITE it to tb/{name} with write_file_disk, then reply with it in one ```verilog block."
     )
     temp = min(0.3 + 0.18 * attempt, 0.9)
-    final = run_deep_agent(rec, design_dir, goal, extra_tools=_step_tools(rec), temperature=temp)
+    final = run_deep_agent(rec, design_dir, goal,
+                           extra_tools=_step_tools(rec, design_dir), temperature=temp)
 
     code = extract_code_block(final)
     disk = design_dir / "tb" / name
@@ -1846,8 +2218,58 @@ def _deep_fix_testbench(rec, ctx, feedback=""):
     ctx["fix_history"] = history
 
 
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+
+def _extract_pdf_text(path: Path) -> str:
+    """Best-effort PDF → text (first 20 pages). Returns '' if pypdf isn't installed —
+    the agent can then pip_install pypdf and read it via run_python."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(path))
+        return "\n".join((pg.extract_text() or "") for pg in reader.pages[:20]).strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _save_uploads(design_dir: Path, uploads) -> str:
+    """Persist user-attached files/images under context/uploads/ and build a digest the
+    deep agents PEEK at. Text is embedded (capped), PDFs are text-extracted best-effort,
+    and images are saved with their on-disk path noted so a node can analyze them with
+    the Python tool (run_python + pillow). Returns the digest markdown (or '')."""
+    if not uploads:
+        return ""
+    updir = design_dir / "context" / "uploads"
+    updir.mkdir(parents=True, exist_ok=True)
+    parts: List[str] = []
+    for uf in uploads:
+        try:
+            data = uf.getvalue()
+        except Exception:  # noqa: BLE001
+            continue
+        name = re.sub(r"[^\w.\-]", "_", os.path.basename(uf.name))
+        path = updir / name
+        path.write_bytes(data)
+        rel = path.relative_to(design_dir)
+        ext = path.suffix.lower()
+        if ext in _IMAGE_EXT:
+            parts.append(f"### {name} (image · {len(data)} bytes)\nSaved at `{rel}`. "
+                         "Analyze it with run_python (e.g. PIL.Image / numpy) if you need its contents.")
+        elif ext == ".pdf":
+            text = _extract_pdf_text(path)
+            parts.append(f"### {name} (PDF)\n{text[:6000]}" if text else
+                         f"### {name} (PDF · {len(data)} bytes)\nSaved at `{rel}`. "
+                         "Extract its text with run_python (pip_install pypdf) if needed.")
+        else:
+            try:
+                parts.append(f"### {name}\n```\n{data.decode('utf-8', 'replace')[:6000]}\n```")
+            except Exception:  # noqa: BLE001
+                parts.append(f"### {name} ({len(data)} bytes)\nSaved at `{rel}` (binary).")
+    return ("# User-attached files (uploaded with the prompt)\n\n" + "\n\n".join(parts)) if parts else ""
+
+
 def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util,
-            autonomous=True, deep_steps=True):
+            autonomous=True, deep_steps=True, uploads=None):
     design_dir = OUTPUT_DIR / slugify(prompt)
     if design_dir.exists():
         shutil.rmtree(design_dir)
@@ -1861,6 +2283,7 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
             "lint_output": "", "lint_count": 0, "deep_steps": deep_steps,
             "run_harden": run_harden, "clock_port": clock_port, "clock_period": clock_period,
             "die_um": die_um, "core_util": core_util,
+            "uploads_digest": _save_uploads(design_dir, uploads),
         },
         "queue": ["plan"],
         "transcript": [],
@@ -1896,21 +2319,24 @@ def render_output(design_dir: Path):
     for p in sorted(design_dir.rglob("*")):
         if p.is_file() and "runs" not in p.parts:
             tree.append(str(p.relative_to(design_dir)))
-    st.code("output/" + design_dir.name + "/\n" + "\n".join(f"  {t}" for t in tree[:60]), language="text")
+    st.code("output/" + design_dir.name + "/\n" +
+            "\n".join(f"  {t}" for t in tree[:60]), language="text")
 
     cols = st.columns(2)
     gds_files = list(design_dir.glob("*.gds"))
     if gds_files:
         with cols[0]:
             with open(gds_files[0], "rb") as f:
-                st.download_button("⬇️ Download GDSII", f, file_name=gds_files[0].name)
+                st.download_button("⬇️ Download GDSII", f,
+                                   file_name=gds_files[0].name)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for p in design_dir.rglob("*"):
             if p.is_file() and "runs" not in p.parts:
                 z.write(p, p.relative_to(design_dir))
     with cols[1]:
-        st.download_button("⬇️ Download all (zip)", buf.getvalue(), file_name=f"{design_dir.name}.zip")
+        st.download_button("⬇️ Download all (zip)",
+                           buf.getvalue(), file_name=f"{design_dir.name}.zip")
 
 
 def finalize(run):
@@ -1918,7 +2344,16 @@ def finalize(run):
     design_dir = Path(ctx["design_dir"])
     sim_passed = not ctx.get("simulation_output")
     top = ctx.get("top_module_name") or slugify(ctx["query"])
-    write_result_md(design_dir, ctx["query"], top, sim_passed, ctx.get("harden"))
+    write_result_md(design_dir, ctx["query"],
+                    top, sim_passed, ctx.get("harden"))
+    # Push this whole design (RTL/TB/sim/GDS/notes/uploads) into the durable knowledge
+    # store so future runs can RECALL it — this is how the RLM gets better over time.
+    try:
+        n = get_memory().ingest_run(design_dir, design=design_dir.name, query=ctx["query"])
+        if n:
+            ctx["ingested_count"] = n
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -1926,7 +2361,8 @@ def finalize(run):
 # --------------------------------------------------------------------------- #
 def feedback_ui(run):
     pend = run.get("pending")
-    accepts = STEP_DEFS.get(pend, (None,) * 5)[4] if pend in STEP_DEFS else False
+    accepts = STEP_DEFS.get(
+        pend, (None,) * 5)[4] if pend in STEP_DEFS else False
     queue = run["queue"]
     ctx = run["ctx"]
     st.markdown("---")
@@ -1937,7 +2373,8 @@ def feedback_ui(run):
         st.warning(f"⏸ **Paused** after `{pend}`. RTL not yet verified "
                    f"({ctx.get('error_count', 0)} attempts). Steer with Replan, or finish.")
     else:
-        st.success(f"⏸ **Paused** after `{pend}`. Nothing left queued — finish, or steer.")
+        st.success(
+            f"⏸ **Paused** after `{pend}`. Nothing left queued — finish, or steer.")
 
     # Feedback box FIRST so its value is available to every button below.
     fb = st.text_area("💬 Feedback / steering (used by Revise and Replan)",
@@ -1987,15 +2424,32 @@ def steer_box(run):
 def main():
     st.set_page_config(page_title="GarudaChip", layout="wide")
     st.title("🦅 GarudaChip — prompt → RTL → GDSII")
-    st.caption("Local-LLM digital & SoC automation · autonomous or step-by-step · Ollama + LibreLane")
+    st.caption(
+        "Local-LLM digital & SoC automation · autonomous or step-by-step · Ollama + LibreLane")
 
     with st.sidebar:
         st.header("Model")
         st.success(f"Chat: {provider_label()}")
 
+        mem = get_memory()
+        if mem.enabled:
+            s = mem.stats()
+            kinds = ", ".join(f"{k}:{v}" for k, v in sorted((s.get("by_kind") or {}).items()))
+            st.caption(f"🗄️ Knowledge store: **{s.get('total', 0)}** items"
+                       + (f" ({kinds})" if kinds else ""))
+            if st.button("📥 Ingest example corpus", use_container_width=True,
+                         help="Load examples/verilog_designs/ into the knowledge store for recall."):
+                with st.spinner("Ingesting examples/verilog_designs…"):
+                    n = mem.ingest_corpus(REPO_ROOT / "examples" / "verilog_designs")
+                st.success(f"Ingested {n} files into the knowledge store.")
+                st.rerun()
+        else:
+            st.caption("🗄️ Knowledge store offline — `docker compose up -d` to enable recall.")
+
         st.header("Run mode")
         run_mode = st.radio("Run mode",
-                            ["🤖 Autonomous (run end-to-end)", "✋ Review each step"],
+                            ["🤖 Autonomous (run end-to-end)",
+                             "✋ Review each step"],
                             label_visibility="collapsed",
                             help="Autonomous runs every agent to completion without asking "
                                  "(Chipster-style). Review pauses after each agent so you can "
@@ -2021,15 +2475,27 @@ def main():
         prompt = st.text_area("Describe the hardware to build", height=140,
                               value="an 8-bit (int8) transformer Q/K/V self-attention accelerator, "
                                     "sequence length 4 and head dimension 4, signed 8-bit MAC datapath")
+        uploads = st.file_uploader(
+            "📎 Attach files / images (spec, paper, data, diagram)",
+            accept_multiple_files=True,
+            type=["txt", "md", "csv", "json", "v", "vh", "sv", "svh", "log",
+                  "pdf", "png", "jpg", "jpeg", "webp"],
+            help="Saved into the design's context/uploads/. Text + PDF content is fed to the "
+                 "agents as reference; images are saved so a node can analyze them with the "
+                 "Python tool (run_python + pillow).")
         use_web = st.checkbox("Use web research", value=True)
 
         st.header("Hardening")
-        run_harden = st.checkbox("Run LibreLane after RTL passes", value=hw_ok, disabled=not hw_ok)
+        run_harden = st.checkbox(
+            "Run LibreLane after RTL passes", value=hw_ok, disabled=not hw_ok)
         clock_port = st.text_input("Clock port", value="clk")
-        clock_period = st.number_input("Clock period (ns)", 1.0, value=24.0, step=1.0)
-        die_um = st.number_input("Die size (µm, square)", 50.0, value=600.0, step=50.0)
+        clock_period = st.number_input(
+            "Clock period (ns)", 1.0, value=24.0, step=1.0)
+        die_um = st.number_input(
+            "Die size (µm, square)", 50.0, value=600.0, step=50.0)
         core_util = st.slider("Core utilization (%)", 10, 80, 25)
-        go = st.button("🚀 Generate chip", type="primary", use_container_width=True)
+        go = st.button("🚀 Generate chip", type="primary",
+                       use_container_width=True)
         if st.session_state.get("run") is not None and st.button("🔄 New run / reset", use_container_width=True):
             st.session_state.run = None
             st.rerun()
@@ -2039,7 +2505,8 @@ def main():
 
     if go:
         st.session_state.run = new_run(prompt, use_web, run_harden and hw_ok,
-                                       clock_port, clock_period, die_um, core_util, autonomous, deep_steps)
+                                       clock_port, clock_period, die_um, core_util, autonomous,
+                                       deep_steps, uploads=uploads)
 
     run = st.session_state.run
     if run is None:
@@ -2061,25 +2528,29 @@ def main():
     steer = run.pop("steer_msg", None)
     act = run.pop("action", None)
     if steer:
-        if _is_file_command(steer):                    # "remove the .vh file", "create rtl/alu.v" → file agent
+        # "remove the .vh file", "create rtl/alu.v" → file agent
+        if _is_file_command(steer):
             run["pending_fileagent"] = steer
             run["status"] = "fileagent"
         else:
             pend = run.get("pending")
-            if pend in STEP_DEFS and STEP_DEFS[pend][4]:   # revisable step → redo it with the new instruction
+            # revisable step → redo it with the new instruction
+            if pend in STEP_DEFS and STEP_DEFS[pend][4]:
                 if run["transcript"]:
                     run["transcript"].pop()
                 run["queue"].insert(0, pend)
                 run["feedback"] = steer
                 run["status"] = "running"
-            else:                                          # not revisable (write/sim) → replan from the message
+            # not revisable (write/sim) → replan from the message
+            else:
                 run["pending_feedback"] = steer
                 run["status"] = "replan"
     elif act == "continue":
         run["status"] = "finalize" if not run["queue"] else "running"
     elif act == "revise":
         if run["transcript"]:
-            run["transcript"].pop()                 # drop the step we're redoing
+            # drop the step we're redoing
+            run["transcript"].pop()
         run["queue"].insert(0, run["pending"])      # and re-run it next
         run["feedback"] = run.pop("pending_feedback", "")
         run["status"] = "running"
@@ -2103,7 +2574,8 @@ def main():
         run["status"] = "paused"
     elif run["status"] == "weblookup":
         do_weblookup(run, run.pop("pending_block", ""))
-        run["queue"].insert(0, run["pending"])      # re-run the paused step with the new reference
+        # re-run the paused step with the new reference
+        run["queue"].insert(0, run["pending"])
         run["status"] = "paused"
     elif run["status"] == "fileagent":
         do_fileagent(run, run.pop("pending_fileagent", ""))
@@ -2138,12 +2610,14 @@ def main():
     done = {GRAPH_KEY.get(r["node"], r["node"]) for r in run["transcript"]}
     if run["status"] == "done" and (run["ctx"].get("harden") or {}).get("gds"):
         done.add("gds")
-    graph_ph.graphviz_chart(workflow_graph(done=done), use_container_width=True)
+    graph_ph.graphviz_chart(workflow_graph(done=done),
+                            use_container_width=True)
 
     # 8) Feedback panel (review mode) / output.
     if run["status"] == "paused":
         if run.get("autonomous"):
-            st.info("🤖 Running autonomously… type a prompt at the bottom anytime to steer it.")
+            st.info(
+                "🤖 Running autonomously… type a prompt at the bottom anytime to steer it.")
         else:
             feedback_ui(run)
     elif run["status"] == "done":
