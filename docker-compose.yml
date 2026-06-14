@@ -49,6 +49,28 @@ services:
       timeout: 3s
       retries: 30
 
+  # SearXNG — self-hosted metasearch (Google/Bing/DuckDuckGo/GitHub/arXiv in one query,
+  # no per-engine rate limits). It FINDS pages; crawl4ai READS them. The agents query it
+  # at http://localhost:8888 (SEARXNG_URL) for planning + debugging research. The mounted
+  # settings.yml enables the JSON API the Python client needs.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: garudachip-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888/
+      # generated on first `docker compose up` if left blank below; or set your own
+      SEARXNG_SECRET: garuda-searxng-secret-change-me
+    volumes:
+      - ./docker/searxng:/etc/searxng:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://localhost:8080/search?q=test&format=json' >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
 volumes:
   garuda_pgdata:
   garuda_miniodata:

@@ -72,6 +72,95 @@ def knowledge_stats():
         return {"total": 0, "by_kind": {}}
 
 
+# --- knowledge store browser (Postgres rows + MinIO objects: view/search/add/delete) ---
+class KnowledgeItem(BaseModel):
+    text: str
+    kind: str = "note"
+    title: str = ""
+    design: str = ""
+    tags: str = ""
+
+
+def _mem():
+    from memory_store import get_memory
+    return get_memory()
+
+
+@app.get("/api/knowledge/items")
+def knowledge_items(kind: str = "", design: str = "", q: str = "", limit: int = 200):
+    """List knowledge rows (newest first), optionally filtered by kind/design, OR
+    semantically searched when `q` is given (pgvector cosine)."""
+    try:
+        mem = _mem()
+        if q.strip():
+            items = mem.recall(q, kind=kind or None, design=design or None, k=min(limit, 50))
+        else:
+            items = mem.list_items(kind=kind or None, design=design or None, limit=limit)
+        # normalize datetimes to strings
+        for it in items:
+            ca = it.get("created_at")
+            if ca is not None and not isinstance(ca, str):
+                it["created_at"] = str(ca)
+        return {"items": items, "enabled": bool(getattr(mem, "enabled", False))}
+    except Exception as e:  # noqa: BLE001
+        return {"items": [], "enabled": False, "error": str(e)}
+
+
+@app.get("/api/knowledge/item/{item_id}")
+def knowledge_item(item_id: str):
+    row = _mem().get(item_id)
+    if not row:
+        raise HTTPException(404, "not found")
+    ca = row.get("created_at")
+    if ca is not None and not isinstance(ca, str):
+        row["created_at"] = str(ca)
+    return row
+
+
+@app.post("/api/knowledge/items")
+def knowledge_add(body: KnowledgeItem):
+    if not body.text.strip():
+        raise HTTPException(400, "text is required")
+    rid = _mem().remember(body.kind or "note", body.text, design=body.design,
+                          source="manual-ui", title=body.title or body.text[:60],
+                          tags=body.tags or "manual")
+    if not rid:
+        raise HTTPException(503, "knowledge store unavailable")
+    return {"id": rid, "ok": True}
+
+
+@app.delete("/api/knowledge/item/{item_id}")
+def knowledge_delete(item_id: str):
+    return {"ok": _mem().delete(item_id)}
+
+
+@app.delete("/api/knowledge/items")
+def knowledge_delete_where(kind: str = "", design: str = ""):
+    if not (kind or design):
+        raise HTTPException(400, "pass kind and/or design (refuses to wipe everything)")
+    return {"deleted": _mem().delete_where(kind=kind or None, design=design or None)}
+
+
+@app.get("/api/knowledge/objects")
+def knowledge_objects(prefix: str = ""):
+    """List MinIO objects (key + size) — the raw blobs behind the rows."""
+    try:
+        return {"objects": _mem().list_objects(prefix)}
+    except Exception as e:  # noqa: BLE001
+        return {"objects": [], "error": str(e)}
+
+
+@app.get("/api/knowledge/object")
+def knowledge_object(key: str):
+    """Download/serve one MinIO object by key."""
+    blob = _mem().get_object(key)
+    if blob is None:
+        raise HTTPException(404, "object not found")
+    from fastapi.responses import Response
+    return Response(content=blob, media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'inline; filename="{key.split("/")[-1]}"'})
+
+
 # --- chats ------------------------------------------------------------------
 @app.get("/api/chats")
 def chats():
@@ -98,6 +187,79 @@ def get_chat(chat_id: str):
 def delete_chat(chat_id: str):
     db.delete_chat(chat_id)
     return {"ok": True}
+
+
+# --- artifacts: the design's papers / code / GDS / images, for the "shelf" UI ---
+_ART_KIND = {".v": "code", ".vh": "code", ".sv": "code", ".svh": "code",
+             ".pdf": "pdf", ".png": "image", ".jpg": "image", ".jpeg": "image",
+             ".svg": "image", ".webp": "image", ".gds": "gds", ".vcd": "waveform",
+             ".md": "doc", ".log": "log", ".json": "data", ".txt": "doc"}
+
+
+@app.get("/api/chats/{chat_id}/artifacts")
+def chat_artifacts(chat_id: str):
+    run = db.latest_run_for_chat(chat_id)
+    base = Path(run["design_dir"]) if run and run.get("design_dir") else None
+    if not base or not base.exists():
+        return {"artifacts": []}
+    out, seen = [], set()
+    for sub in ("rtl", "tb", "context/refs", "context/uploads", "context", "sim", "."):
+        d = base / sub
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*")):
+            if not p.is_file() or p in seen or "runs" in p.parts:
+                continue
+            seen.add(p)
+            out.append({"name": p.name, "path": str(p.relative_to(base)),
+                        "kind": _ART_KIND.get(p.suffix.lower(), "file"),
+                        "size": p.stat().st_size})
+    return {"artifacts": out}
+
+
+@app.get("/api/chats/{chat_id}/export-knowledge")
+def export_status(chat_id: str):
+    """Has this chat's design already been exported to the knowledge store?"""
+    run = db.latest_run_for_chat(chat_id)
+    base = Path(run["design_dir"]) if run and run.get("design_dir") else None
+    if not base:
+        return {"exported": False, "count": 0}
+    try:
+        rows = _mem().list_items(design=base.name, limit=500)
+        return {"exported": len(rows) > 0, "count": len(rows)}
+    except Exception:  # noqa: BLE001
+        return {"exported": False, "count": 0}
+
+
+@app.post("/api/chats/{chat_id}/export-knowledge")
+def export_knowledge(chat_id: str):
+    """Persist this chat's design (RTL/TB/notes/refs/GDS) into the durable knowledge store
+    (Postgres rows + MinIO blobs) ON DEMAND — so deleting the chat/message NEVER loses the
+    knowledge; it stays recallable and browsable in the Knowledge tab."""
+    run = db.latest_run_for_chat(chat_id)
+    base = Path(run["design_dir"]) if run and run.get("design_dir") else None
+    if not base or not base.exists():
+        raise HTTPException(404, "no design to export")
+    ctx = run.get("ctx") or {}
+    try:
+        n = _mem().ingest_run(base, design=base.name, query=ctx.get("query", ""))
+        return {"ok": True, "count": int(n or 0), "design": base.name}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"export failed: {e}")
+
+
+@app.get("/api/chats/{chat_id}/file")
+def chat_file(chat_id: str, path: str):
+    run = db.latest_run_for_chat(chat_id)
+    if not run or not run.get("design_dir"):
+        raise HTTPException(404, "no design")
+    base = Path(run["design_dir"]).resolve()
+    target = (base / path).resolve()
+    if base != target and base not in target.parents:
+        raise HTTPException(400, "invalid path")
+    if not target.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(str(target))
 
 
 # --- send a message (starts a run) ------------------------------------------
@@ -176,27 +338,24 @@ async def stream_run(run_id: str, request: Request):
         return StreamingResponse(replay(), media_type="text/event-stream")
 
     async def gen():
-        loop = asyncio.get_event_loop()
-        ended = False
-        try:
-            while True:
-                # client closed the tab / reloaded / switched chat → stop the run
-                if await request.is_disconnected():
-                    break
-                try:
-                    event = await loop.run_in_executor(None, bus.q.get, True, 1.0)
-                except Exception:  # queue.Empty (timeout) → heartbeat
-                    yield ": keep-alive\n\n"
-                    continue
+        # Replay the ENTIRE backlog from index 0 (so a reload mid-run restores the whole
+        # transcript), then continue live. The bus keeps every event, so this is safe.
+        idx = 0
+        while True:
+            # Client closed the tab / reloaded / switched chat → just STOP STREAMING to
+            # this viewer. The RUN KEEPS GOING server-side (a multi-hour RTL→GDS build must
+            # survive a page reload, like watching CI — closing the tab doesn't cancel CI).
+            # To intentionally stop a run, use the Stop button (POST /api/runs/{id}/pause).
+            if await request.is_disconnected():
+                break
+            batch, idx = bus.since(idx)
+            for event in batch:
                 yield _sse(event)
-                if event.get("type") == "end":
-                    ended = True
-                    break
-        finally:
-            if not ended:
-                # the viewer went away before the run finished → pause it (state is saved,
-                # so 'continue' resumes). This is the ChatGPT-like "leaving stops it".
-                runner.request_pause(run_id)
+            if batch and batch[-1].get("type") == "end":
+                break
+            if not batch:                           # nothing new → heartbeat + brief poll
+                yield ": keep-alive\n\n"
+                await asyncio.sleep(0.25)
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})

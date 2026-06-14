@@ -10,7 +10,7 @@ RLM's memory updates LIVE during a run, not only at the end.
 """
 from __future__ import annotations
 
-import queue
+import re
 import subprocess
 import sys
 import threading
@@ -98,25 +98,31 @@ def _emit_patch(pipeline) -> None:
 
 
 def _run_step(pipeline, run_obj, node, feedback):
-    """Run one step. RunPaused (pause) and any crash both HALT the run rather than
-    advancing with broken state. Returns (record, paused, crashed)."""
+    """Run one step. RunPaused can mean STOP (pause) or STEER (override this step now);
+    a crash halts. Returns (record, paused, crashed, steered)."""
     emoji, title, desc, fn, _ = pipeline.STEP_DEFS[node]
     ctx = run_obj["ctx"]
     if node in ("write", "simulate", "fix_design", "fix_testbench"):
         title = f"{title} (attempt {ctx.get('error_count', 0) + 1})"
     rec = pipeline.Recorder(emoji, title, desc, node, live=True)
-    paused = crashed = False
+    rid = getattr(_local, "run_id", "")
+    paused = crashed = steered = False
     try:
         fn(rec, ctx, feedback)
     except RunPaused:
-        paused = True
         _local.cancel = None              # stop re-raising while we record the note
-        rec.caption("⏸ Paused mid-step — this step will re-run when you say continue.")
+        steer_ev, pause_ev = _STEER_EV.get(rid), _PAUSE.get(rid)
+        if steer_ev is not None and steer_ev.is_set() and not (pause_ev and pause_ev.is_set()):
+            steered = True
+            rec.caption("💬 Applying your steer — re-running this step with it…")
+        else:
+            paused = True
+            rec.caption("⏸ Paused mid-step — this step will re-run when you say continue.")
     except Exception as e:  # noqa: BLE001
         crashed = True
         rec.error(f"Step crashed: {e}\nSay **continue** to retry this step (it does NOT skip "
                   "ahead), or **replan**.")
-    return {"node": node, "blocks": rec.blocks}, paused, crashed
+    return {"node": node, "blocks": rec.blocks}, paused, crashed, steered
 
 
 def _safe(payload):
@@ -134,23 +140,62 @@ def _safe(payload):
 
 # --- event bus --------------------------------------------------------------
 class RunBus:
+    """Append-only event log with REPLAY. Every event a run emits is kept, so a (re)connecting
+    viewer replays the FULL backlog from index 0 and then continues live. This is what makes a
+    reload (or switching chats and back) mid-run RESTORE the whole transcript instead of showing
+    an empty stream — the old consume-once Queue dropped every event already read."""
     def __init__(self):
-        self.q: "queue.Queue" = queue.Queue()
+        self.log: list[dict] = []
+        self._lock = threading.Lock()
         self.done = False
 
     def push(self, event: dict):
-        self.q.put(event)
+        with self._lock:
+            self.log.append(event)
 
     def finish(self, status: str):
         self.done = True
-        self.q.put({"type": "end", "status": status})
+        self.push({"type": "end", "status": status})
+
+    def since(self, idx: int):
+        """Events from `idx` onward + the new cursor — the replay primitive the stream uses."""
+        with self._lock:
+            return self.log[idx:], len(self.log)
 
 
 _BUSES: dict[str, RunBus] = {}
 _PAUSE: dict[str, "threading.Event"] = {}
 _STEER: dict[str, list] = {}        # steering messages sent WHILE a run is working
+_STEER_EV: dict[str, "threading.Event"] = {}   # "interrupt the current step and apply now"
+_CUR_NODE: dict[str, str] = {}      # the step currently running (for the echo block)
 # steps that actually consume feedback (so steering isn't eaten by a mechanical step)
 _LLM_STEPS = {"plan", "web", "generate", "testbench", "fix_design", "fix_testbench"}
+
+
+# a steer mentioning these wants FRESH research → re-run the web step, don't just continue
+_RESEARCH_RE = re.compile(
+    r"\b(web|github|git ?hub|paper|papers|research|reference|references|find|search|"
+    r"look ?up|online|internet|source|sources|context|repo|repos|datasheet)\b", re.I)
+
+
+def _apply_steer(run_obj: dict) -> str | None:
+    """Consume queued steers for this run and route them:
+      • research intent ('find web/github/paper…') → re-queue the WEB step so it fetches
+        FRESH context, then comes back to the rest of the plan;
+      • otherwise → set the steer as feedback for the (re-run) current/next step.
+    Returns a note for the transcript, or None if nothing was queued."""
+    rid = getattr(_local, "run_id", "")
+    steers = _STEER.pop(rid, None)
+    if not steers:
+        return None
+    text = " · ".join(steers)
+    run_obj["feedback"] = ((run_obj.get("feedback") or "") + " " + text).strip()
+    q = run_obj["queue"]
+    if _RESEARCH_RE.search(text):
+        if not q or q[0] != "web":
+            q.insert(0, "web")          # GO BACK to the researcher with the steer
+        return f"🌐 Re-researching web/GitHub/papers with your steer: {text}"
+    return f"💬 Steering applied: {text}"
 
 
 def _unproductive(node: str, ctx: dict) -> str:
@@ -158,7 +203,12 @@ def _unproductive(node: str, ctx: dict) -> str:
     string = the step produced its expected artifact. web/retrieve are research, so they
     never gate the build."""
     if node == "generate":
-        return "" if "endmodule" in (ctx.get("generation") or "") else "produced no RTL"
+        if "endmodule" not in (ctx.get("generation") or ""):
+            return "produced no RTL"
+        miss = ctx.get("_gen_missing") or []      # planned modules the generator never wrote
+        if miss:
+            return f"incomplete — {len(miss)} planned module(s) missing: " + ", ".join(miss[:6])
+        return ""
     if node == "decompose":
         return "" if (ctx.get("decomposed_files") or {}) else "produced no modules"
     if node == "testbench":
@@ -172,11 +222,21 @@ def get_bus(run_id: str) -> RunBus | None:
 
 
 def request_steer(run_id: str, message: str) -> bool:
-    """Queue a steering message for a LIVE run; it's applied as feedback to the next step.
-    Returns True if the run is live."""
-    if not (message or "").strip() or run_id not in _PAUSE:
+    """Steer a LIVE run. The message is (1) ECHOED into the transcript immediately so the
+    user sees their intent right away, and (2) used to INTERRUPT the current step and
+    re-run it with the steering applied (override the current state), falling back to the
+    next step if the current one can't be interrupted. Returns True if the run is live."""
+    message = (message or "").strip()
+    if not message or run_id not in _PAUSE:
         return False
-    _STEER.setdefault(run_id, []).append(message.strip())
+    _STEER.setdefault(run_id, []).append(message)
+    bus = _BUSES.get(run_id)
+    if bus:                                   # show the user's message instantly
+        bus.push({"type": "block", "node": _CUR_NODE.get(run_id, "generate"),
+                  "kind": "info", "payload": [f"💬 You: {message}"]})
+    ev = _STEER_EV.get(run_id)
+    if ev:                                    # interrupt the current step to apply now
+        ev.set()
     return True
 
 
@@ -232,6 +292,7 @@ def start_run(*, chat_id: str, message_id: str, prompt: str,
     bus = RunBus()
     _BUSES[rec["id"]] = bus
     _PAUSE[rec["id"]] = threading.Event()
+    _STEER_EV[rec["id"]] = threading.Event()
 
     t = threading.Thread(target=_execute, args=(rec["id"], run_obj, bus), daemon=True)
     t.start()
@@ -245,10 +306,12 @@ def _execute(run_id: str, run_obj: dict, bus: RunBus) -> None:
     ctx = run_obj["ctx"]
     design_dir = ctx["design_dir"]
     _local.design_dir = design_dir
-    # lets the streamed Recorder abort the current step the moment pause is requested
-    _local.cancel = (lambda: pause_ev.is_set()) if (pause_ev := _PAUSE.get(run_id)) else None
-    design = Path(design_dir).name
     pause_ev = _PAUSE.get(run_id)
+    steer_ev = _STEER_EV.get(run_id)
+    # lets the streamed Recorder abort the current step on a pause OR a steer (override now)
+    _local.cancel = lambda: (pause_ev is not None and pause_ev.is_set()) or \
+                            (steer_ev is not None and steer_ev.is_set())
+    design = Path(design_dir).name
     status = "done"
     paused = False
     crashed = False
@@ -264,27 +327,59 @@ def _execute(run_id: str, run_obj: dict, bus: RunBus) -> None:
         guard = 0
         while run_obj["queue"] and guard < 200:
             guard += 1
+            # route a steer queued BETWEEN steps before choosing the next step (research
+            # intent re-queues 'web'; otherwise it becomes feedback for the next step)
+            if _STEER.get(run_id):
+                note = _apply_steer(run_obj)
+                if steer_ev:
+                    steer_ev.clear()
+                if note:
+                    bus.push({"type": "block", "node": run_obj["queue"][0] if run_obj["queue"]
+                              else "web", "kind": "info", "payload": [note]})
             node = run_obj["queue"].pop(0)
+            _CUR_NODE[run_id] = node
             bus.push({"type": "step", "node": node})
-            # apply steering ONLY on steps that can act on it (LLM steps) — so a steer
-            # isn't silently eaten by a mechanical step (retrieve/decompose/write/…).
-            if node in _LLM_STEPS:
-                steers = _STEER.pop(run_id, None)
-                if steers:
-                    steer = " · ".join(steers)
-                    run_obj["feedback"] = ((run_obj.get("feedback") or "") + " " + steer).strip()
-                    bus.push({"type": "block", "node": node, "kind": "info",
-                              "payload": [f"💬 Steering applied: {steer}"]})
-            # _run_step lets a mid-step pause (RunPaused) abort promptly; a crash halts too
-            record, step_paused, step_crashed = _run_step(
+            # _run_step: RunPaused → pause(stop) OR steer(override now); crash → halt
+            record, step_paused, step_crashed, step_steered = _run_step(
                 pipeline, run_obj, node, run_obj.pop("feedback", ""))
             run_obj["transcript"].append(record)
-            if step_paused or step_crashed:
-                # DON'T advance with broken state — halt here so the user can `continue`
-                # (re-run THIS step) or replan. (Fix for "a crash jumped to decompose".)
+            if step_steered:
+                # the user steered DURING this step → re-run it (or re-research) with the
+                # steer applied NOW, never just continuing to the next step.
+                if steer_ev:
+                    steer_ev.clear()
+                run_obj["queue"].insert(0, node)          # come back to this step…
+                note = _apply_steer(run_obj)              # …after 'web' if research intent
+                if note:
+                    bus.push({"type": "block", "node": node, "kind": "info", "payload": [note]})
+                db.update_run(run_id, status="running", ctx=ctx,
+                              transcript=_records(run_obj["transcript"]),
+                              queue=run_obj["queue"], pending=node)
+                continue
+            if step_crashed:
+                # crashes are often a transient local-model glitch → AUTO-RETRY (bounded),
+                # never skip ahead; only halt after it keeps failing.
+                ck = f"_crash_{node}"
+                ctx[ck] = ctx.get(ck, 0) + 1
+                run_obj["queue"].insert(0, node)
+                if ctx[ck] < 3:
+                    bus.push({"type": "block", "node": node, "kind": "warning",
+                              "payload": [f"↻ {node} crashed (transient) — auto-retrying "
+                                          f"(attempt {ctx[ck] + 1}); not skipping ahead."]})
+                    db.update_run(run_id, status="running", ctx=ctx,
+                                  transcript=_records(run_obj["transcript"]),
+                                  queue=run_obj["queue"], pending=node)
+                    continue
                 paused = True
-                crashed = crashed or step_crashed
-                run_obj["queue"].insert(0, node)        # re-run THIS step on continue
+                crashed = True
+                db.update_run(run_id, status="paused", ctx=ctx,
+                              transcript=_records(run_obj["transcript"]),
+                              queue=run_obj["queue"], pending=node)
+                break
+            if step_paused:
+                # user pressed Stop → halt; state saved, `continue` resumes this step.
+                paused = True
+                run_obj["queue"].insert(0, node)
                 db.update_run(run_id, status="paused", ctx=ctx,
                               transcript=_records(run_obj["transcript"]),
                               queue=run_obj["queue"], pending=node)
@@ -355,6 +450,8 @@ def _execute(run_id: str, run_obj: dict, bus: RunBus) -> None:
         _PAUSE.pop(run_id, None)
         _PROCS.pop(run_id, None)
         _STEER.pop(run_id, None)
+        _STEER_EV.pop(run_id, None)
+        _CUR_NODE.pop(run_id, None)
         _local.run_id = None
 
 
@@ -429,6 +526,7 @@ def resume_run(*, chat_id: str, message_id: str) -> dict | None:
     bus = RunBus()
     _BUSES[rec["id"]] = bus
     _PAUSE[rec["id"]] = threading.Event()
+    _STEER_EV[rec["id"]] = threading.Event()
     threading.Thread(target=_execute, args=(rec["id"], run_obj, bus), daemon=True).start()
     return rec
 

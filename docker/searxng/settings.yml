@@ -1,0 +1,33 @@
+# GarudaChip SearXNG settings — minimal, tuned for programmatic use by the agents.
+# The KEY change vs. the stock image: `formats` includes `json`, so the Python client
+# (_searxng_search in app.py) can request &format=json. Stock SearXNG ships JSON OFF.
+use_default_settings: true
+
+general:
+  instance_name: "GarudaChip Research"
+  debug: false
+
+server:
+  # Override with the SEARXNG_SECRET env var in docker-compose; this is the fallback.
+  secret_key: "garuda-searxng-secret-change-me"
+  limiter: false            # local single-user instance → no rate limiter / bot filter
+  image_proxy: false
+  method: "GET"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json                  # <-- enables the JSON API the agents call
+
+# Keep the engines that matter for HDL / hardware research fast and reliable. The
+# defaults already include google/bing/duckduckgo/github/arxiv; this just makes sure
+# the science + IT categories are available for papers and code.
+engines:
+  - name: github
+    disabled: false
+  - name: arxiv
+    disabled: false
+  - name: google scholar
+    disabled: false

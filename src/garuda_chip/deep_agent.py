@@ -60,18 +60,56 @@ How to work (RLM loop):
 3. BUILD UP in files. Write intermediate and final RTL to `rtl/<module>.v` with
    `write_file_disk` instead of holding it all in your reply.
 4. Use `write_todos` to plan multi-step work and track progress.
-5. COMPUTE data in Python when the hardware is data-driven. For LUTs (relu, softmax,
-   sigmoid, sin/cos), filter coefficients, or NN weights, use `run_python` (numpy /
-   pytorch / matplotlib) to generate and QUANTIZE the values to the correct format
-   (signed/unsigned int, or Qm.n fixed-point), WRITE them to a memory file (e.g.
-   `rtl/relu_lut.mem`) and load it from Verilog with `$readmemh`/`$readmemb` — or
-   bake the constants straight into the RTL. `pip_install` anything you need first.
-   You can also use `run_python` to test an algorithm or a concept from a paper, or
-   to read an attached PDF/image (e.g. pillow/pypdf) before designing.
+5. PYTHON IS A LAST-RESORT DATA TOOL — NOT a deliverable. Most designs (CPU, ALU, FSM,
+   regfile, datapath, controller) need NO Python at all; write them straight as RTL.
+   Reach for `run_python` ONLY when the hardware is genuinely DATA-DRIVEN and the data
+   needs real computation:
+     • LINEARIZE/quantize a math function into a LUT (relu, softmax, sigmoid, sin/cos,
+       reciprocal) — numpy;
+     • TRAIN or derive NN weights/filter taps to bake into the chip — numpy/torch;
+     • a C/C++/C reference KERNEL to cross-check a low-level datapath against.
+   When you do, use `run_python` to EMIT the result — QUANTIZE to the right format
+   (signed/unsigned int, or Qm.n fixed-point) and WRITE a `rtl/<name>.mem` loaded by
+   `$readmemh`/`$readmemb`, or print constants to bake into the RTL. The Python is a
+   throw-away generator: do NOT leave a `*.py` script in `rtl/` as part of the design.
+   (`run_python` is also fine for reading an attached PDF/image with pypdf/pillow.)
+   If the math is just arithmetic the RTL already does, skip Python entirely.
 6. VERIFY before finishing — re-read what you wrote and check it against the rules.
 - {PITFALLS}
 - Before editing a file, read it first. After writing, confirm the file path.
 """
+
+
+# Per-file last compile error during a write (path -> (error, broken_content)), so when a
+# file goes broken→clean we can persist the error→fix lesson. Module-level so it survives
+# across write_file_disk calls within a generation step.
+_LAST_WRITE_ERR: dict = {}
+
+
+def _save_gen_fix_lesson(err: str, broken: str, fixed: str, design: str) -> None:
+    """Persist a fix made DURING generation to the knowledge DB (kind='fix'), with a stable
+    id by error signature so it dedupes. This is what makes EVERY problem solved while
+    working in chat get saved — not just corrector-stage fixes."""
+    try:
+        import re as _re
+        import hashlib
+        from memory_store import get_memory
+        mem = get_memory()
+        if not getattr(mem, "enabled", False):
+            return
+        # concise signature = the first real error message line
+        sigline = next((ln for ln in (err or "").splitlines()
+                        if "error" in ln.lower() or "warning" in ln.lower()), err[:80])
+        sig = _re.sub(r"^.*?:\s*\d+:?\s*", "", sigline).strip()[:120] or "verilog error"
+        body = (f"ERROR SIGNATURE: {sig}\n\nSYMPTOM:\n{err[:600]}\n\n"
+                f"BROKEN (do NOT write this):\n```verilog\n{broken[:1200]}\n```\n\n"
+                f"CORRECT FIX:\n```verilog\n{fixed[:1600]}\n```\n")
+        rid = "fix_" + hashlib.sha1(sig.lower().encode()).hexdigest()[:16]
+        mem.remember("fix", body, design=design, source="auto-fix:generation",
+                     title=("fix: " + sig)[:120], tags="fix lesson generation",
+                     object_key=rid, meta={"error_sig": sig})
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def make_fs_tools(base_dir: str | Path) -> List:
@@ -147,11 +185,43 @@ def make_fs_tools(base_dir: str | Path) -> List:
 
     @tool
     def write_file_disk(path: str, content: str) -> str:
-        """Create or OVERWRITE a file under the design dir, e.g. 'rtl/alu.v'. Use this to save new or updated Verilog."""
+        """Create or OVERWRITE a file under the design dir, e.g. 'rtl/alu.v'. Use this to
+        save new or updated Verilog. Verilog files are AUTO-REPAIRED (obvious syntax tics)
+        and COMPILE-CHECKED on write: if the result says COMPILE ERRORS, fix the file and
+        write it again before moving on."""
         p = _resolve(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+        fixnote = ""
+        if p.suffix in (".v", ".sv", ".vh"):
+            try:
+                from verilog_check import autofix_text
+                content, notes = autofix_text(content)
+                if notes:
+                    fixnote = " · auto-repaired: " + "; ".join(notes)
+            except Exception:  # noqa: BLE001
+                pass
         p.write_text(content)
-        return f"wrote {path} ({len(content)} bytes)"
+        note = f"wrote {path} ({len(content)} bytes){fixnote}"
+        # Instant feedback loop: a syntax/elaboration error surfaces in THIS tool result,
+        # so the agent fixes the file now — not 10 modules later at simulation time.
+        if p.suffix in (".v", ".sv"):
+            # testbenches check fine too: -i ignores the missing DUT, syntax still caught
+            try:
+                from verilog_check import check_file
+                err = check_file(p, base / "rtl")
+                if err:
+                    _LAST_WRITE_ERR[str(p)] = (err, content)   # remember for the fix-lesson
+                    return (f"{note}\nCOMPILE ERRORS — fix this file and write it again "
+                            f"NOW (do not move to the next module):\n{err}")
+                # broken→clean during GENERATION = a real fix → save the lesson to the
+                # knowledge DB (pg/MinIO) so the same mistake isn't repeated next run.
+                prev = _LAST_WRITE_ERR.pop(str(p), None)
+                if prev:
+                    _save_gen_fix_lesson(prev[0], prev[1], content, base.name)
+                return f"{note} — compile check clean ✓"
+            except Exception:  # noqa: BLE001
+                pass
+        return note
 
     @tool
     def delete_file_disk(path: str) -> str:

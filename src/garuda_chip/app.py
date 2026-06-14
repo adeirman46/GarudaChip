@@ -48,7 +48,9 @@ load_dotenv()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "verilog_datasets"
 OUTPUT_DIR = REPO_ROOT / "output"          # <-- all results land here
-MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "50"))
+# 50 blind retries never converged — with the static gate + multi-file fixes,
+# 12 cycles is plenty; past that the design needs a replan, not more of the same.
+MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "12"))
 MAX_LINT_RETRIES = int(os.getenv("MAX_LINT_RETRIES", "10"))
 LIBRELANE_BIN = os.getenv("LIBRELANE_BIN", "librelane")
 PDK = os.getenv("PDK", "gf180mcuD")
@@ -74,7 +76,14 @@ def extract_code_block(text: str, lang: str = "verilog") -> str:
     m = re.search(rf"```(?:{lang})?\s*\n(.*?)```", text, re.DOTALL)
     code = m.group(1).strip() if m else text.replace(
         f"```{lang}", "").replace("```", "").strip()
-    return dedup_modules(code)
+    code = dedup_modules(code)
+    if lang == "verilog":
+        try:                              # deterministically repair the obvious syntax tics
+            from verilog_check import autofix_text
+            code, _ = autofix_text(code)
+        except Exception:  # noqa: BLE001
+            pass
+    return code
 
 
 def dedup_modules(code: str) -> str:
@@ -118,51 +127,45 @@ def librelane_available() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Persistent agent memory — lessons/fixes that survive across runs
+# Persistent agent memory — error→fix lessons that survive across runs.
+# These live ONLY in the durable knowledge store (Postgres rows + embeddings,
+# blobs in MinIO) — NOT in a local JSON file — so they are shared across runs and
+# machines and surface via semantic recall, and the agent stops repeating the same
+# mistake. Every debug point (compile-on-write, static check, sim/lint corrector,
+# fail→pass transition) funnels through remember_fix(); recall happens BEFORE the
+# generator writes and at the start of every correction.
 # --------------------------------------------------------------------------- #
-MEMORY_FILE = DATA_DIR / "agent_memory.json"
-
-
-def load_memory() -> dict:
-    try:
-        return json.loads(MEMORY_FILE.read_text())
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-def save_memory(mem: dict) -> None:
-    try:
-        MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        # keep the store bounded
-        items = list(mem.items())[-200:]
-        MEMORY_FILE.write_text(json.dumps(dict(items), indent=2))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def remember_fix(error_sig: str, hint: str) -> None:
-    if not (error_sig and hint):
+def remember_fix(error_sig: str, hint: str, *, design: str = "", broken: str = "",
+                 fixed: str = "") -> None:
+    """Persist an error→fix lesson to pg/MinIO (kind='fix'). Saved AUTOMATICALLY at every
+    debug point; deduped by a content hash so the same lesson isn't stored twice. Optionally
+    include the BROKEN and FIXED code so recall gives a concrete before/after pattern."""
+    if not error_sig:
         return
-    mem = load_memory()                       # fast local cache (agent_memory.json)
-    mem[error_sig[:200]] = hint[:4000]
-    save_memory(mem)
-    # ALSO persist to the durable knowledge store (pgvector + MinIO) so the lesson is
-    # shared across runs/machines and surfaces in semantic recall — the agent stops
-    # repeating the same mistake.
+    body = f"ERROR SIGNATURE: {error_sig}\n\n"
+    if broken:
+        body += f"BROKEN (do NOT write this):\n```verilog\n{broken[:1500]}\n```\n\n"
+    if fixed:
+        body += f"CORRECT FIX:\n```verilog\n{fixed[:2000]}\n```\n\n"
+    if hint and not fixed:
+        body += f"FIX: {hint}\n"
     try:
         from memory_store import get_memory
-        get_memory().remember(
-            "fix", f"ERROR: {error_sig}\n\nFIX: {hint}",
-            source="auto-fix", title=error_sig[:120], tags="fix")
+        mem = get_memory()
+        if not getattr(mem, "enabled", False):
+            return
+        # stable id by error signature → ON CONFLICT updates in place (no duplicate rows)
+        import hashlib
+        rid = "fix_" + hashlib.sha1(error_sig.lower().encode()).hexdigest()[:16]
+        mem.remember("fix", body, design=design, source="auto-fix",
+                     title=("fix: " + error_sig)[:120], tags="fix lesson",
+                     object_key=rid, meta={"error_sig": error_sig[:300]})
     except Exception:  # noqa: BLE001
         pass
 
 
 def recall_fix(error_sig: str) -> str:
-    hit = load_memory().get((error_sig or "")[:200], "")
-    if hit:
-        return hit
-    # fall back to durable semantic recall of past fixes
+    """Semantic recall of the best-matching past fix from pg/MinIO ('' if none)."""
     try:
         from memory_store import get_memory
         items = get_memory().recall(error_sig or "", kind="fix", k=1)
@@ -214,6 +217,314 @@ def _looks_repetitive(text: str) -> bool:
 # resetting an unpacked array in one shot, two `always` blocks driving one reg).
 # Spelling them out beats a generic "fix the error" — the model has the knowledge
 # but needs to be pointed at the exact rule it broke.
+# Every downstream agent reads the architect's GENERAL plan, then makes its OWN detailed
+# plan for its step (hierarchical planning).
+_SUBPLAN = ("Your file plan for this step is FIXED and listed above (it was derived from the "
+            "architect's design_notes.md). Call write_todos with EXACTLY those files, SAME names, "
+            "SAME order — do NOT invent a different module breakdown, do NOT rename/split/merge "
+            "files. For each file, read its interface from design_notes.md with read_file_disk, "
+            "then write it. Build them in order.\n")
+
+# Strong template so the build contract is ALWAYS thorough, regardless of model variance.
+DESIGN_NOTES_PROMPT = """You are the LEAD ARCHITECT writing the build CONTRACT (design_notes.md) — \
+a KNOWLEDGE document a senior engineer writes BEFORE any code. It captures the DECISIONS, the MATH, \
+and the RELEVANT KNOWLEDGE — NOT the implementation. Target is an ASIC / GDSII tape-out (not FPGA).
+
+HARD RULES — the document is REJECTED if you break ANY of them:
+- This is NOT the RTL. Write NO module bodies, NO internal wires/registers, NO `always`/`assign` \
+blocks, NO logic, NO pipeline-register lists. The generator writes all of that later.
+- For each module show ONLY its INTERFACE: the `module name (...);` header with the PORT LIST \
+(direction, width, one-line comment per port) and `endmodule`. ≤ 20 lines per block. \
+NEVER repeat a line; NEVER list internal signals.
+- Spend your words on KNOWLEDGE (the math, the formats, the hazards, the references), not on code. \
+Be concise — the whole document is well under ~400 lines.
+
+HARDWARE: {query}
+{constraints}
+{feedback}
+
+# <Design Name> — Build Contract
+
+## 1. Specification
+Restate precisely, as a bullet list: feature/instruction set, pipeline depth, clock target, \
+register count, memory sizes, the exact instruction/feature subset.
+
+## 2. Key Knowledge & Decisions   ← the MOST IMPORTANT section; be detailed here
+- **Fixed-point**: the exact Qm.n per datapath, WHY, and the overflow/saturation/rounding rule.
+- **Hard parts**: pipeline / data hazards + the forwarding/stall rule; reset strategy; the tricky \
+corner cases — and how each is handled.
+- **Algorithm / math**: ONLY IF the design is genuinely data-driven (a function LUT to linearize, \
+NN weights/filter taps to train) — name the table to COMPUTE in Python (numpy/torch), its format \
+(Qm.n / int width), how it's derived or trained, and how it's loaded (`$readmemh` from a `.mem`). \
+DESCRIBE it; do NOT dump the tables. If the math is ordinary arithmetic the RTL does itself, OMIT \
+this — no Python, no `.py` files in the design.
+- **References** (from recall + web/github): name each repo/paper and exactly what to reuse from it.
+
+## 3. Module Map
+A markdown table `| Module | Role | Key ports |` — ONE row per sub-module.
+
+## 4. Interfaces (boilerplate only)
+The top module first, then each sub-module, as a SHORT ```verilog header — PORTS ONLY, ≤ 20 lines \
+each, no bodies.
+
+## 5. Connections
+How the modules wire together + the control FSM (states + the control signals it drives), as a \
+short bullet list or small ASCII sketch. NO code.
+
+## 6. Verification & GDS Sign-off
+Tests per feature + fixed-point / corner-case tests; then the path to silicon ON THE TARGET PDK \
+named in the constraints above: logic synthesis → floorplan/placement/CTS/routing → DRC / LVS / \
+antenna → GDSII stream-out. Bullets. Do NOT name any other PDK/node.
+
+Output ONLY the concise markdown document — no preamble, no fences around the whole thing."""
+
+# Known-PDK human labels so the plan names the real process, not a hallucinated one.
+_PDK_LABELS = {"gf180": "GlobalFoundries 180 nm", "sky130": "SkyWater 130 nm",
+               "asap7": "ASAP7 7 nm (predictive)", "ihp-sg13g2": "IHP SG13G2 130 nm"}
+
+
+def _constraints_note(ctx) -> str:
+    """The REAL per-run target constraints — injected into the GRAND PLAN and the build
+    contract so the planner names the ACTUAL PDK/clock and never invents another (the
+    model otherwise drops in sky130/asap7). RTL itself stays PDK-agnostic; these bind only
+    at hardening, but the plan must REFER to the right ones."""
+    label = next((v for k, v in _PDK_LABELS.items() if PDK.lower().startswith(k)), "")
+    pdk_str = f"{PDK}" + (f" ({label})" if label else "")
+    period = ctx.get("clock_period")
+    try:
+        freq = f" (≈{1000.0 / float(period):.0f} MHz)" if period else ""
+    except (TypeError, ValueError):
+        freq = ""
+    lines = [
+        f"- Target PDK: {pdk_str} — the ONLY process for this chip. Do NOT name sky130, "
+        "asap7, tsmc, gf12lp, or ANY other PDK/node anywhere; the technology is "
+        f"{PDK} and nothing else.",
+        f"- Clock: port `{ctx.get('clock_port', 'clk')}`, period {period} ns{freq}.",
+    ]
+    if ctx.get("die_um"):
+        lines.append(f"- Die: {ctx['die_um']} µm, core utilization {ctx.get('core_util')}.")
+    return "TARGET CONSTRAINTS (read these; use EXACTLY them, invent nothing):\n" + "\n".join(lines)
+
+
+# The GRAND plan is GENERAL and written FIRST, like Claude Code's plan step: each line is an
+# INTENTION ("search the architecture", "search github/paper/web", "generate", "tb it", "gds
+# it within constraints") that is then EXECUTED with its tooling. Per-module / per-test / per-fix
+# DETAIL is NOT here — each agent writes its own sub-plan for that. Every line maps to a step
+# that really runs (nothing listed the flow never does, nothing done that isn't listed).
+PLAN_POINTS_PROMPT = """You are the LEAD ARCHITECT writing the GRAND PLAN for this chip, the way \
+Claude Code writes a plan BEFORE doing the work: a short ordered list of GENERAL intentions, each of \
+which is then carried out with the right tool. TARGET = ASIC / GDSII tape-out (RTL → synthesis → \
+place-and-route → DRC/LVS → GDS). This is NOT an FPGA flow: no bitstream/config/LUT-CLB/board steps \
+unless the spec says FPGA.
+
+Keep it GENERAL — one short ACTION line per stage, in order. Do NOT enumerate every module, test \
+case, or fix here: that DETAIL belongs to each agent's own sub-plan. Aim for ~8-12 lines, in this \
+order:
+- restate the spec + KEY parameters (bit-widths, fixed-point Qm.n, clock, feature/instruction set)
+- search the ARCHITECTURE / theory of this design (how this kind of block is structured)
+- search GitHub / papers / web for reference RTL to ANCHOR on
+- decide the module map FROM the anchor's blocks (same decomposition, adapt widths/ports to the spec)
+- generate the RTL for each module (the generator sub-plans the exact files)
+- ONLY IF the design is data-driven: compute the LUT/weights in Python → a .mem file (else OMIT this \
+line — no Python for ordinary arithmetic)
+- write self-checking testbenches (the testbench agent sub-plans the exact cases)
+- simulate (Icarus) and fix until it passes
+- lint (Verilator) and fix
+- harden to GDS on the target PDK (synthesis → P&R → DRC/LVS/antenna), staying within the die / area \
+/ clock constraints below
+HARDWARE: {query}
+{constraints}
+{feedback}
+Output ONLY the checklist — one item per line, no numbering, no headers, no extra prose."""
+
+
+def _plan_points(rec, query, feedback="", context="", constraints="") -> List[str]:
+    """Generate the GRAND plan checkpoints reliably and render them as a ⬜ checklist. Written
+    FIRST, from the SPEC + `constraints` alone (Claude-Code style) — recall/research run AFTER,
+    as execution of the plan's 'search …' steps. `constraints` = the real PDK/clock so the plan
+    names the right process and never hallucinates sky130/asap7. `context` is optional/legacy."""
+    rec.caption("🧠 Reasoning out the build plan…")
+    try:
+        raw = clean_llm_output(stream_to(
+            get_chat_model(temperature=0.3),
+            PLAN_POINTS_PROMPT.format(
+                query=query, constraints=constraints,
+                feedback=(f"USER STEERING: {feedback}" if feedback else ""))
+            + (f"\n\nWhat we already RECALLED + RESEARCHED (build the plan on these, cite the "
+               f"reference per relevant step):\n{context[:2200]}" if context else ""),
+            rec.placeholder()))
+    except Exception:  # noqa: BLE001
+        raw = ""
+    pts: List[str] = []
+    for ln in raw.splitlines():
+        t = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", ln).strip().strip("[]").strip()
+        if 3 < len(t) < 160 and not t.lower().startswith(("here", "output", "checklist", "the ")):
+            pts.append(t)
+    pts = pts[:24]
+    if not pts:
+        pts = ["Restate the spec and key parameters",
+               "Search the architecture / theory of this design",
+               "Search GitHub / papers / web for reference RTL to anchor on",
+               "Decide the module map from the anchor's blocks",
+               "Generate the RTL for each module",
+               "Compute LUT/weights in Python only if data-driven",
+               "Write self-checking testbenches", "Simulate (Icarus) and fix until it passes",
+               "Lint (Verilator) and fix",
+               f"Harden to GDS on {PDK} within the die/area/clock constraints"]
+    rec.plan(pts)   # live checklist — greens as downstream agents do each phase
+    return pts
+
+
+# Each build agent makes its OWN reliable, detailed sub-plan checklist (the [] [] [] for
+# its step) — generated directly so it's never a single vague item.
+_SUBPLAN_ASK = {
+    "generate": ("List the RTL FILES to write for this design, in build order — ONE short line "
+                 "each as 'filename — what it does', e.g. 'fixed_point_params.vh — Qm.n defines', "
+                 "'alu.v — 8-bit ALU + flags', 'regfile.v — 32x8 register file'. List ONLY .v/.vh "
+                 "RTL files. Add a 'compute <X> LUT/weights in Python → rtl/<X>.mem' line ONLY if "
+                 "the design is genuinely data-driven (a function LUT to linearize, NN weights to "
+                 "train) — never a plain .py deliverable, and never for ordinary arithmetic the RTL "
+                 "does itself. 8-16 items."),
+    "testbench": ("List the TEST CASES the self-checking testbench must cover — ONE short line "
+                  "each: reset behaviour, each operation/instruction, corner cases (overflow, "
+                  "hazards), and the expected check. 8-16 items."),
+    "fix_design": ("List the steps to diagnose and FIX the failing module — ONE short line each: "
+                   "read the error, name the exact rule violated, the fix, re-check. 4-8 items."),
+}
+
+
+def _plan_path(design_dir, step: str) -> Path:
+    return Path(design_dir) / "context" / f"plan_{step}.json"
+
+
+def _load_plan(design_dir, step: str) -> List[str]:
+    """The LOCKED sub-plan for `step`, if one was already decided. Reusing it is the whole
+    point: a retry / a user 'continue' / a resume must get the SAME file breakdown, never a
+    freshly re-rolled one — that's what made the plan, the agent's todos and the completeness
+    gate disagree."""
+    p = _plan_path(design_dir, step)
+    if p.exists():
+        try:
+            return [s for s in json.loads(p.read_text()) if isinstance(s, str) and s.strip()]
+        except Exception:  # noqa: BLE001
+            return []
+    return []
+
+
+def _save_plan(design_dir, step: str, pts: List[str]) -> None:
+    """Lock a step's sub-plan to disk so every later entry reuses the EXACT same list."""
+    if not pts:
+        return
+    p = _plan_path(design_dir, step)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(list(pts)))
+
+
+def _modules_from_notes(doc: str) -> List[tuple]:
+    """(name, role) for every module the ARCHITECT declared in design_notes.md — from its
+    Interfaces `module <name>(...)` headers and the Module-Map table. This is the SINGLE
+    decomposition of the chip; the generator builds EXACTLY these, so the grand plan, the
+    generate sub-plan, the agent's write_todos and the completeness gate can never disagree."""
+    doc = doc or ""
+    roles: dict = {}
+    for r in re.finditer(r"^\s*\|\s*`?([A-Za-z_]\w*)`?\s*\|\s*([^|]+?)\s*\|", doc, re.M):
+        nm, role = r.group(1), re.sub(r"\s+", " ", r.group(2)).strip()
+        if nm.lower() not in ("module", "name", "block") and nm not in roles:
+            roles[nm] = role[:80]
+    order: List[str] = []
+    for m in re.finditer(r"\bmodule\s+([A-Za-z_]\w*)", doc):     # interface code headers
+        if m.group(1) not in order:
+            order.append(m.group(1))
+    for nm in roles:                                            # table-only names, after
+        if nm not in order:
+            order.append(nm)
+    return [(nm, roles.get(nm, "module")) for nm in order]
+
+
+def _build_plan_from_notes(doc: str) -> List[str]:
+    """The locked generate sub-plan, DERIVED from the architect's design_notes.md so it is the
+    same decomposition the architect drew — not an independent re-roll that disagrees with it."""
+    mods = _modules_from_notes(doc)
+    if len(mods) < 2:
+        return []
+    sub: List[str] = []
+    mvh = re.search(r"\b([A-Za-z_]\w*\.vh)\b", doc or "")
+    if mvh:
+        sub.append(f"{mvh.group(1)} — shared `define parameters")
+    for nm, role in mods:
+        sub.append(f"{nm}.v — {role}"[:140])
+    return list(dict.fromkeys(sub))
+
+
+def _anchor_module_list(design_dir, limit: int = 40) -> List[tuple]:
+    """(module_name, relpath) for every module DEFINED in the cloned anchor design under
+    context/anchor/. The architect bases the Module Map on THESE blocks — same decomposition,
+    adapt only widths/ports/ops — and the generator copies+adapts them. 'See what's inside the
+    anchor BEFORE planning the modules', so we never invent a block the references don't have
+    and then get stuck on a module with no working source to copy."""
+    adir = Path(design_dir) / "context" / "anchor"
+    if not adir.exists():
+        return []
+    try:
+        from verilog_check import _strip_comments as _vstrip
+    except Exception:  # noqa: BLE001
+        def _vstrip(t):  # noqa: ANN001
+            return re.sub(r"//[^\n]*", " ", t)
+    out: List[tuple] = []
+    seen: set = set()
+    for p in sorted(adir.rglob("*.v")) + sorted(adir.rglob("*.sv")):
+        if "papers" in p.parts:
+            continue
+        try:
+            txt = _vstrip(p.read_text(errors="replace"))
+        except Exception:  # noqa: BLE001
+            continue
+        for m in re.finditer(r"\bmodule\s+([A-Za-z_]\w*)", txt):
+            nm = m.group(1)
+            if nm not in seen:
+                seen.add(nm)
+                out.append((nm, str(p.relative_to(Path(design_dir)))))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def _subplan(rec, query, step, feedback="", design_dir=None) -> List[str]:
+    """Per-step sub-plan checklist for a build agent (rendered as ⬜ items). LOCKED on first
+    use: if a plan for this step was already decided (saved to disk), REUSE it verbatim so a
+    retry / continue / resume never gets a different breakdown."""
+    # Reuse the locked plan on a normal entry (retry / continue / resume) so the breakdown is
+    # stable. A deliberate Revise carries `feedback` — then we re-derive and re-lock below.
+    if design_dir and not feedback:
+        cached = _load_plan(design_dir, step)
+        if cached:
+            rec.caption("🧠 Reusing the locked plan for this step (consistent across retries).")
+            rec.plan(cached)
+            return cached
+    ask = _SUBPLAN_ASK.get(step)
+    if not ask:
+        return []
+    rec.caption("🧠 Planning this step…")
+    try:
+        raw = clean_llm_output(stream_to(
+            get_chat_model(temperature=0.3),
+            f"{ask}\nDESIGN: {query}\n" + (f"USER STEERING: {feedback}\n" if feedback else "")
+            + "Output ONLY the checklist, one item per line, no numbering or headers.",
+            rec.placeholder()))
+    except Exception:  # noqa: BLE001
+        raw = ""
+    pts: List[str] = []
+    for ln in raw.splitlines():
+        t = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", ln).strip().strip("[]").strip()
+        if 3 < len(t) < 160 and not t.lower().startswith(("here", "output", "the design")):
+            pts.append(t)
+    pts = pts[:16]
+    if design_dir and pts:                          # lock it so the next entry reuses it
+        _save_plan(design_dir, step, pts)
+    if pts:
+        rec.plan(pts)   # live checklist — items green as their files get written
+    return pts
+
 VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY ONE BEFORE REPLYING:
 1. UNPACKED-ARRAY RESET: for `reg [W-1:0] mem [0:N-1]` you CANNOT write `mem <= 0`,
    `mem <= '0`, or `mem <= {N{...}}` — that is a "malformed statement". Reset entry by
@@ -236,7 +547,18 @@ VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY 
    intermediate value inside `always`, either declare a module-scope `wire`+`assign`,
    or use a procedural `reg`/`integer` (declared at module scope or the top of a named
    begin/end) with blocking `=`. Example fix: move `wire signed [7:0] q0 = q[15:8];`
-   OUT of the always block to module scope as `wire signed [7:0] q0 = q[15:8];`."""
+   OUT of the always block to module scope as `wire signed [7:0] q0 = q[15:8];`.
+10. CLOSE EVERY BLOCK WITH `end`, NEVER `}`. Verilog has NO curly-brace blocks. Write
+    `if (x) begin ... end else begin ... end` — writing `} else` / `}` to close a block
+    is a syntax error. `{ }` is ONLY for concatenation/replication like `{a,b}`/`{4{1'b0}}`.
+11. PART-SELECT WIDTH MUST BE CONSTANT. `mem[32*(i+1)-1 : 32*i]` with a loop/var `i` is
+    illegal ("reference to a wire/reg is not allowed in a constant expression"). For a
+    word array use an UNPACKED array `reg [31:0] mem [0:N-1];` and index `mem[i]`, or use
+    the indexed part-select `bus[i*32 +: 32]` (the width after `+:` is constant).
+12. NO BIT-SELECT ON AN EXPRESSION. `(a + b)[32]` / `(a*b)[7:0]` is a syntax error — you may
+    only index a NET or VARIABLE, not a parenthesised expression. Assign it first:
+    `wire [32:0] sum = a + b;` then use `sum[32]`. For a carry-out of an N-bit add do
+    `wire [N:0] sum = a + b; assign carry = sum[N];`."""
 
 
 # ---- Live workflow graph (highlights the agent currently working) ---------- #
@@ -366,33 +688,178 @@ _SEARCH_STOP = {
 
 def _hdl_keywords(text: str, n: int = 4) -> List[str]:
     """Distill a (possibly verbose) request into the few salient search keywords — the
-    distinctive nouns a GitHub/web search actually needs (e.g. 'riscv', 'picorv', 'alu')."""
-    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_]+", (text or "").lower())
+    distinctive nouns a GitHub/web search actually needs (e.g. 'riscv', 'picorv', 'alu').
+    Width tokens matter for HDL search: '32 bit' → '32bit', and rv32/rv32i are kept."""
+    low = (text or "").lower()
     out: List[str] = []
+    for m in re.findall(r"\brv\d+\w*\b", low):          # rv32, rv32i, rv64gc …
+        if m not in out:
+            out.append(m)
+    width = re.search(r"\b(\d+)\s*-?\s*bit\b", low)
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_]+", low)
     for w in words:
         if w in _SEARCH_STOP or len(w) < 3 or w in out:
             continue
         out.append(w)
+    if width and f"{width.group(1)}bit" not in out:
+        out.insert(min(1, len(out)), f"{width.group(1)}bit")
     return out[:n]
 
 
-def _ddg_github(query: str, limit: int) -> List[str]:
-    """Fallback repo finder via DuckDuckGo `site:github.com` — works when the GitHub
-    API is rate-limited or the prose query matched nothing (this is what makes a search
-    for 'picorv' actually surface YosysHQ/picorv32)."""
+# Whole-DESIGN synonym groups: swapping one group gives an alternative phrasing of the
+# SAME complete chip — never a sub-block. The web search seeds its "similar" queries from
+# these, so the user's prompt broadens to close variants (the user wants "same text +
+# similar", NOT 'alu, regfile, decoder' fragments that pull off-topic repos).
+_DESIGN_SYNS = [
+    ("cpu", "processor", "core", "microprocessor"),
+    ("rv32i", "riscv", "risc-v", "rv32"),
+    ("pipelined", "pipeline", "multi-stage"),
+    ("accelerator", "engine", "coprocessor"),
+    ("multiplier", "mac", "multiply-accumulate"),
+    ("convolution", "convolutional", "conv"),
+    ("transformer", "attention", "self-attention"),
+    ("soc", "system-on-chip"),
+    ("uart", "serial-uart"),
+    ("controller", "ctrl"),
+    ("fft", "fast-fourier-transform"),
+]
+
+
+def _design_variants(query: str, n: int = 3) -> List[str]:
+    """Alternative phrasings of the WHOLE design — synonyms / common alternative namings of
+    the SAME chip, NOT its sub-blocks. One synonym swap per group, across groups for variety:
+    'rv32i pipelined cpu' → 'rv32i pipelined processor', 'riscv pipelined cpu', 'rv32i
+    pipeline cpu'. This is what the search uses for its 'similar' queries so it finds COMPLETE
+    reference designs instead of scattered alu/regfile repos. Deterministic = zero model
+    variance (the model's own chunked breakdown is deliberately NOT used for search)."""
+    base = (query or "").strip().lower()
+    if not base:
+        return []
+    out: List[str] = []
+    for group in _DESIGN_SYNS:
+        present = next((w for w in group
+                        if re.search(rf"\b{re.escape(w)}\b", base)), None)
+        if not present:
+            continue
+        for alt in group:
+            if alt == present:
+                continue
+            variant = re.sub(rf"\b{re.escape(present)}\b", alt, base, count=1)
+            if variant != base and variant not in out:
+                out.append(variant)
+                break
+        if len(out) >= n:
+            break
+    return out[:n]
+
+
+def _error_search_terms(err: str, n: int = 4) -> List[str]:
+    """Distill compiler/sim error text into a few SEARCHABLE phrases — drop file paths and
+    line/bit numbers, keep the human message ('Numeric constant truncated to 3 bits',
+    'malformed statement', 'syntax error', 'width mismatch'). This is what the researcher
+    searches when the user says 'find about the PROBLEM' instead of the design topic."""
+    terms, seen = [], set()
+    for ln in (err or "").splitlines():
+        low = ln.lower()
+        if "error" not in low and "warning" not in low:
+            continue
+        # message = text after the final 'error:'/'warning:' marker
+        parts = re.split(r"(?:error|warning)\s*:\s*", ln, flags=re.I)
+        msg = (parts[-1] if len(parts) > 1 else "").strip()
+        if (not msg or msg.startswith("/")) and "syntax error" in low:
+            msg = "syntax error"
+        if not msg or len(msg) < 5 or msg.startswith("/"):
+            continue
+        msg = re.sub(r"\s+", " ", msg).rstrip(".")
+        key = re.sub(r"\d+", "N", msg.lower())[:70]   # collapse line/bit numbers for dedupe
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(msg[:80])
+        if len(terms) >= n:
+            break
+    return terms
+
+
+def searxng_url() -> str:
+    return os.getenv("SEARXNG_URL", "http://localhost:8888").rstrip("/")
+
+
+def searxng_available() -> bool:
+    """True if a SearXNG instance answers on SEARXNG_URL (JSON format enabled)."""
+    try:
+        import requests
+        r = requests.get(f"{searxng_url()}/search",
+                         params={"q": "test", "format": "json"}, timeout=4)
+        return r.ok and isinstance(r.json().get("results"), list)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _searxng_search(query: str, limit: int, categories: str = "",
+                    engines: str = "") -> List[str]:
+    """Primary search backend: a self-hosted SearXNG metasearch engine (aggregates
+    Google/Bing/DuckDuckGo/GitHub/arXiv… in one query, no per-engine rate limits).
+    Returns result URLs in relevance order. Empty list if SearXNG isn't configured or
+    reachable — callers then fall back to DuckDuckGo. Pair with crawl4ai: SearXNG FINDS
+    the pages, crawl4ai READS them.
+
+    `categories` (e.g. 'science' for papers, 'it' for code/repos) and `engines`
+    (e.g. 'github', 'arxiv,google scholar') narrow the search when useful."""
+    base = os.getenv("SEARXNG_URL")
+    if not base and not os.getenv("SEARXNG_FORCE"):
+        # not configured → skip silently so DDG fallback runs (no failed HTTP each call)
+        if not getattr(_searxng_search, "_probed", False):
+            _searxng_search._probed = searxng_available()  # one cheap probe per process
+        if not _searxng_search._probed:
+            return []
     out: List[str] = []
     try:
-        from ddgs import DDGS
-        kw = " ".join(_hdl_keywords(query, 3)) or query
-        for res in DDGS().text(f"{kw} verilog site:github.com", max_results=limit * 3):
-            m = re.match(r"(https://github\.com/[^/]+/[^/#?]+)", res.get("href", ""))
-            if m and m.group(1) not in out and "/topics/" not in m.group(1):
-                out.append(m.group(1))
+        import requests
+        params = {"q": query, "format": "json", "safesearch": 0}
+        if categories:
+            params["categories"] = categories
+        if engines:
+            params["engines"] = engines
+        r = requests.get(f"{searxng_url()}/search", params=params, timeout=12)
+        if not r.ok:
+            return []
+        for res in r.json().get("results", []):
+            u = res.get("url")
+            if u and u not in out:
+                out.append(u)
                 if len(out) >= limit:
                     break
     except Exception:  # noqa: BLE001
-        pass
+        return []
     return out
+
+
+def _ddg_github(query: str, limit: int) -> List[str]:
+    """Repo finder via SearXNG (`site:github.com`), falling back to DuckDuckGo — works
+    when the GitHub API is rate-limited or the prose query matched nothing (this is what
+    makes a search for 'picorv' actually surface YosysHQ/picorv32)."""
+    out: List[str] = []
+    kw = " ".join(_hdl_keywords(query, 3)) or query
+
+    def _keep(u: str) -> None:
+        m = re.match(r"(https://github\.com/[^/]+/[^/#?]+)", u or "")
+        if m and m.group(1) not in out and "/topics/" not in m.group(1):
+            out.append(m.group(1))
+
+    for u in _searxng_search(f"{kw} verilog site:github.com", limit * 3):  # SearXNG first
+        _keep(u)
+        if len(out) >= limit:
+            return out[:limit]
+    try:                                                                   # DDG fallback
+        from ddgs import DDGS
+        for res in DDGS().text(f"{kw} verilog site:github.com", max_results=limit * 3):
+            _keep(res.get("href", ""))
+            if len(out) >= limit:
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    return out[:limit]
 
 
 def _github_hdl_repos(query: str, limit: int) -> List[str]:
@@ -435,7 +902,8 @@ def _github_hdl_repos(query: str, limit: int) -> List[str]:
 
 
 def _web_search(query: str, similar: List[str] | None = None,
-                n_github: int = 10, n_other: int = 10) -> List[str]:
+                n_github: int = 10, n_other: int = 10,
+                suffix: str = "verilog digital design architecture") -> List[str]:
     """Balanced references: up to ``n_github`` HDL GitHub repos (Verilog/VHDL/
     SystemVerilog only — code for the IP, or the closest similar IP) PLUS up to
     ``n_other`` papers/web pages (theory/knowledge). ``similar`` are extra,
@@ -449,19 +917,25 @@ def _web_search(query: str, similar: List[str] | None = None,
                 gh.append(u)
 
     other: List[str] = []
-    try:
-        from ddgs import DDGS
-
-        ddg = DDGS()
-        # Search for what the PROMPT actually describes — no hardcoded topic. A
-        # neutral "digital design architecture" suffix keeps results relevant for
-        # CPUs/cores AND accelerators instead of forcing "accelerator" every time.
-        for res in ddg.text(f"{query} verilog digital design architecture", max_results=n_other * 2):
-            u = res.get("href")
-            if u and "github.com" not in u and u not in other:
-                other.append(u)
-    except Exception:  # noqa: BLE001
-        pass
+    # Search for what the PROMPT actually describes — no hardcoded topic. A neutral
+    # "digital design architecture" suffix keeps results relevant for CPUs/cores AND
+    # accelerators instead of forcing "accelerator" every time.
+    full_q = f"{query} {suffix}".strip()
+    # PRIMARY: SearXNG metasearch — also pull a few from the 'science' category so arXiv
+    # papers surface for theory/algorithm knowledge, not just blog posts.
+    for u in (_searxng_search(full_q, n_other * 2)
+              + _searxng_search(f"{query} paper", max(2, n_other // 2), categories="science")):
+        if u and "github.com" not in u and u not in other:
+            other.append(u)
+    if len(other) < n_other:                       # FALLBACK: DuckDuckGo
+        try:
+            from ddgs import DDGS
+            for res in DDGS().text(full_q, max_results=n_other * 2):
+                u = res.get("href")
+                if u and "github.com" not in u and u not in other:
+                    other.append(u)
+        except Exception:  # noqa: BLE001
+            pass
 
     if not gh and not other:  # last-ditch fallback
         try:
@@ -484,6 +958,43 @@ def _md_text(res) -> str:
     return getattr(md, "raw_markdown", None) or getattr(md, "fit_markdown", None) or str(md)
 
 
+_JUNK_RE = re.compile(
+    r"privacy preferences|we use cookies|cookie (policy|settings|consent)|consent (choices|"
+    r"settings|management)|you are under 16|manage (your )?cookies|accept all cookies|"
+    r"sign ?in to (continue|view|read)|create (a free )?account to|subscribe to (read|continue|"
+    r"unlock)|log ?in to continue|are you a robot|verify you are human|captcha|enable javascript|"
+    r"access denied|403 forbidden|404 not found|page not found|this site requires", re.I)
+
+_TECH_RE = re.compile(
+    r"\b(module|endmodule|always|assign|wire|reg|posedge|parameter|localparam|register file|"
+    r"pipeline|alu|opcode|instruction|fixed[- ]?point|datapath|fpga|asic|rtl|verilog|systemverilog|"
+    r"vhdl|testbench|synthesis|riscv|risc-v|multiplier|adder|fsm|finite state)\b", re.I)
+
+
+def _is_useful_doc(text: str, source: str = "") -> bool:
+    """Reject crawled JUNK before it pollutes the knowledge store: cookie-consent / privacy
+    / login-wall / captcha pages, and nav-menu-dominated pages with no technical content.
+    Keeps pages with real HDL/hardware signal. This is what stops 'paper' rows that are just
+    a GDPR banner."""
+    t = (text or "").strip()
+    if len(t) < 300:
+        return False
+    junk = len(_JUNK_RE.findall(t))
+    tech = len(_TECH_RE.findall(t))
+    lines = [ln for ln in t.splitlines() if ln.strip()]
+    # a line that is basically just a markdown link → nav/menu chrome
+    linky = sum(1 for ln in lines
+                if "](" in ln and len(re.sub(r"\[[^\]]*\]\([^)]*\)", "", ln).strip()) < 15)
+    link_density = linky / max(1, len(lines))
+    if junk >= 2 and tech < 5:          # cookie/login wall with no substance
+        return False
+    if link_density > 0.55 and tech < 6:  # mostly a menu/link list
+        return False
+    if tech == 0 and len(t) < 1200:     # short and no hardware signal at all
+        return False
+    return True
+
+
 def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Document]:
     """Crawl a handful of URLs (5 at a time) into Documents. Shared by the Web
     Researcher and the on-demand 'fetch a web example of block X' tool."""
@@ -496,9 +1007,21 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
     urls = urls[:limit]
     log = rec.placeholder()
     seen: List[str] = []
+    out: List[Document] = []
 
-    async def _crawl() -> List[Document]:
-        out: List[Document] = []
+    # GitHub repos: NEVER crawl the HTML landing page (it's just nav-menu chrome —
+    # "Navigation Menu / GitHub Copilot / DevSecOps"). Fetch the REAL HDL source via the
+    # API instead, so the digest contains actual Verilog, not website junk.
+    gh = [u for u in urls if "github.com" in u]
+    web = [u for u in urls if "github.com" not in u]
+    for u in gh:
+        code = _github_code_text(u)
+        if code and len(code) > 200:
+            out.append(Document(page_content=code[:8000], metadata={"source": u}))
+            seen.append("💻 " + u)
+            log.code("\n".join(f"✓ {x}" for x in seen), language="text")
+
+    async def _crawl() -> None:
         sem = asyncio.Semaphore(5)
         async with AsyncWebCrawler() as crawler:
             async def fetch(url: str) -> None:
@@ -507,22 +1030,97 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
                         res = await asyncio.wait_for(crawler.arun(url=url), timeout=25)
                     except Exception:  # noqa: BLE001
                         return
-                md = _md_text(res)
-                if md and len(md) > 250:
-                    is_gh = "github.com" in url
-                    out.append(
-                        Document(page_content=md[:8000], metadata={"source": url}))
-                    seen.append(("💻 " if is_gh else "📄 ") + url)
-                    log.code(
-                        "\n".join(f"✓ {u}" for u in seen), language="text")
-            await asyncio.gather(*(fetch(u) for u in urls))
-        return out
+                md = _strip_web_chrome(_md_text(res))
+                if md and _is_useful_doc(md, url):     # drop cookie/login/nav junk
+                    out.append(Document(page_content=md[:8000], metadata={"source": url}))
+                    seen.append("📄 " + url)
+                    log.code("\n".join(f"✓ {u}" for u in seen), language="text")
+                elif md:
+                    seen.append("🗑 skipped junk: " + url)
+                    log.code("\n".join(f"✓ {u}" for u in seen), language="text")
+            await asyncio.gather(*(fetch(u) for u in web))
 
     try:
-        return asyncio.run(_crawl())
+        if web:
+            asyncio.run(_crawl())
     except Exception as e:  # noqa: BLE001
         rec.warning(f"Crawl failed ({e}).")
-        return []
+    return out
+
+
+_WEB_CHROME_RE = re.compile(
+    r"^\s*(skip to content|navigation menu|toggle navigation|sign in|sign up|appearance "
+    r"settings|github copilot|mcp registry|developer workflows|application security|by "
+    r"company size|by use case|view all features|why github|enterprises|startups|nonprofits|"
+    r"\[devsecops\]|codespaces|changelog|marketplace)\b", re.I)
+
+
+def _strip_web_chrome(md: str) -> str:
+    """Drop obvious site-navigation boilerplate (GitHub/docs chrome) from crawled markdown so
+    the digest is content, not menus. Conservative: removes only known nav lines + pure
+    link-list bullets near them."""
+    if not md:
+        return md
+    out = []
+    for ln in md.splitlines():
+        if _WEB_CHROME_RE.search(ln):
+            continue
+        out.append(ln)
+    return "\n".join(out)
+
+
+def _gh_hdl_paths(user: str, repo: str, headers: dict, max_files: int):
+    """List up to max_files HDL blob paths in a GitHub repo + the default branch."""
+    import requests
+    info = requests.get(f"https://api.github.com/repos/{user}/{repo}", headers=headers, timeout=12)
+    if not info.ok:
+        return "main", []
+    branch = info.json().get("default_branch", "main")
+    tree = requests.get(
+        f"https://api.github.com/repos/{user}/{repo}/git/trees/{branch}?recursive=1",
+        headers=headers, timeout=15)
+    if not tree.ok:
+        return branch, []
+    # prefer real modules (.v/.sv) over headers; skip testbenches when there's plenty
+    paths = [t["path"] for t in tree.json().get("tree", [])
+             if t.get("type") == "blob"
+             and t["path"].lower().endswith((".v", ".sv", ".vh", ".svh", ".vhd"))]
+    paths.sort(key=lambda p: ("tb" in p.lower() or "test" in p.lower(), len(p)))
+    return branch, paths[:max_files]
+
+
+def _gh_headers() -> dict:
+    h = {"Accept": "application/vnd.github+json"}
+    tok = os.getenv("GITHUB_TOKEN")
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    return h
+
+
+def _github_code_text(repo_url: str, max_files: int = 6, max_chars: int = 8000) -> str:
+    """Fetch REAL HDL source (.v/.sv/.vh/.vhd) from a GitHub repo via the API and return it
+    concatenated — NOT the repo's HTML landing page (which is just nav-menu chrome)."""
+    import requests
+    m = re.search(r"github\.com/([^/]+)/([^/#?]+)", repo_url)
+    if not m:
+        return ""
+    user, repo = m.group(1), m.group(2).replace(".git", "")
+    try:
+        h = _gh_headers()
+        branch, paths = _gh_hdl_paths(user, repo, h, max_files)
+        chunks, total = [], 0
+        for path in paths:
+            raw = requests.get(
+                f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}", timeout=15)
+            if raw.ok and raw.text.strip():
+                snip = raw.text[:3000]
+                chunks.append(f"// ===== {repo}/{path} =====\n{snip}")
+                total += len(snip)
+                if total >= max_chars:
+                    break
+        return "\n\n".join(chunks)[:max_chars]
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _download_github_code(repo_url: str, save, max_files: int = 6) -> None:
@@ -532,23 +1130,9 @@ def _download_github_code(repo_url: str, save, max_files: int = 6) -> None:
     if not m:
         return
     user, repo = m.group(1), m.group(2).replace(".git", "")
-    h = {"Accept": "application/vnd.github+json"}
-    tok = os.getenv("GITHUB_TOKEN")
-    if tok:
-        h["Authorization"] = f"Bearer {tok}"
     try:
-        info = requests.get(f"https://api.github.com/repos/{user}/{repo}", headers=h, timeout=12)
-        if not info.ok:
-            return
-        branch = info.json().get("default_branch", "main")
-        tree = requests.get(
-            f"https://api.github.com/repos/{user}/{repo}/git/trees/{branch}?recursive=1",
-            headers=h, timeout=15)
-        if not tree.ok:
-            return
-        paths = [t["path"] for t in tree.json().get("tree", [])
-                 if t.get("type") == "blob"
-                 and t["path"].lower().endswith((".v", ".sv", ".vh", ".svh", ".vhd"))][:max_files]
+        h = _gh_headers()
+        branch, paths = _gh_hdl_paths(user, repo, h, max_files)
         for path in paths:
             raw = requests.get(
                 f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}", timeout=15)
@@ -611,6 +1195,159 @@ def _download_references(urls: List[str], design_dir, rec: "Recorder" = None,
     return n
 
 
+def _repo_score(repo_url: str, query: str) -> int:
+    """How well a repo NAME matches the request keywords (cheap anchor ranking)."""
+    name = repo_url.lower().rsplit("/", 1)[-1]
+    return sum(1 for kw in _hdl_keywords(query, 6) if kw in name)
+
+
+def _clone_anchor_repo(repo_url: str, design_dir, rec=None, max_files: int = 16) -> int:
+    """Download MANY HDL files from ONE repo into context/anchor/<repo>/ — the ANCHOR the
+    generator copies+adapts (not a 6-file digest). Returns the file count."""
+    import requests
+    m = re.search(r"github\.com/([^/]+)/([^/#?]+)", repo_url)
+    if not m:
+        return 0
+    user, repo = m.group(1), m.group(2).replace(".git", "")
+    adir = Path(design_dir) / "context" / "anchor" / repo
+    adir.mkdir(parents=True, exist_ok=True)
+    n = 0
+    try:
+        h = _gh_headers()
+        branch, paths = _gh_hdl_paths(user, repo, h, max_files)
+        for path in paths:
+            raw = requests.get(
+                f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}", timeout=15)
+            if raw.ok and raw.text.strip():
+                (adir / re.sub(r"[^\w.\-]", "_", path)).write_text(raw.text)
+                n += 1
+    except Exception:  # noqa: BLE001
+        pass
+    if rec and n:
+        rec.success(f"⚓ Anchor design cloned: **{repo}** ({n} HDL file(s) → context/anchor/{repo}/) — "
+                    "the generator will COPY the closest module and ADAPT it, not write from scratch.")
+    return n
+
+
+def _anchor_paper(url: str, design_dir, rec=None) -> str | None:
+    """Download ONE paper as an ANCHOR: the real PDF (text-extracted) when it's a PDF, else
+    the useful crawled text. Saved to context/anchor/papers/. Returns the on-disk path."""
+    import requests
+    pdir = Path(design_dir) / "context" / "anchor" / "papers"
+    pdir.mkdir(parents=True, exist_ok=True)
+    try:
+        is_pdf = url.endswith(".pdf") or "arxiv.org/abs/" in url or "arxiv.org/pdf/" in url
+        if is_pdf:
+            pdf_url = url
+            if "arxiv.org/abs/" in url:
+                pid = url.split("/abs/")[-1].split("?")[0].strip("/")
+                pdf_url = f"https://arxiv.org/pdf/{pid}.pdf"
+            r = requests.get(pdf_url, timeout=25)
+            if r.ok and r.content[:4] == b"%PDF":     # only a REAL pdf, never an error page
+                nm = re.sub(r"[^\w.\-]", "_", pdf_url.rstrip("/").split("/")[-1])[:60] or "paper"
+                if not nm.endswith(".pdf"):
+                    nm += ".pdf"
+                (pdir / nm).write_bytes(r.content)
+                txt = _extract_pdf_text(pdir / nm)
+                if txt:
+                    (pdir / (nm + ".txt")).write_text(txt[:20000])
+                if rec:
+                    rec.success(f"⚓ Anchor PAPER downloaded (PDF): {nm} → context/anchor/papers/")
+                return str((pdir / nm).relative_to(Path(design_dir)))
+        docs = _crawl_urls([url], rec, limit=1)        # web page → only if useful (junk filtered)
+        if docs and _is_useful_doc(docs[0].page_content, url):
+            nm = re.sub(r"[^\w]", "_", url)[-60:] + ".md"
+            (pdir / nm).write_text(docs[0].page_content[:16000])
+            return str((pdir / nm).relative_to(Path(design_dir)))
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _build_anchor_and_links(urls: List[str], design_dir, query: str, rec=None) -> dict:
+    """The 'anchor + adapt, others as links' strategy (more reliable than fusing 9-20 sources):
+      • CLONE the 1-2 best-matching GitHub repos in FULL → context/anchor/ (copy + adapt these);
+      • DOWNLOAD the 1-2 best papers (PDF text) → context/anchor/papers/ (a paper can be the anchor too);
+      • save EVERY other source as a LINK (title + url) in context/sources.md — NOT full text —
+        so the agent retrieves one on demand (fetch_reference) only if the anchors don't fit.
+    This keeps the local model's context tiny and the design grounded in ONE working example."""
+    design_dir = Path(design_dir)
+    gh = [u for u in urls if "github.com" in u and "/topics/" not in u]
+    other = [u for u in urls if u not in gh]
+    gh_ranked = sorted(gh, key=lambda u: _repo_score(u, query), reverse=True)
+    cloned = {a: _clone_anchor_repo(a, design_dir, rec) for a in gh_ranked[:2]}
+    cloned = {k: v for k, v in cloned.items() if v}
+
+    # paper anchors: prefer real PDFs (arxiv/*.pdf) over web pages
+    papers_ranked = sorted(other, key=lambda u: (u.endswith(".pdf") or "arxiv" in u), reverse=True)
+    paper_anchors: List[str] = []
+    used = set()
+    for u in papers_ranked[:3]:
+        p = _anchor_paper(u, design_dir, rec)
+        if p:
+            paper_anchors.append(u)
+            used.add(u)
+        if len(paper_anchors) >= 2:
+            break
+
+    lines = ["# Reference sources (anchor + links)\n",
+             "## ⚓ ANCHOR designs — COPY from these; if one matches the spec, copy it (almost) verbatim",
+             "Files are on disk under `context/anchor/`. Read them, pick the closest module, copy it, "
+             "and edit ONLY what the spec needs (widths/ports/ops). If an anchor matches exactly, copy "
+             "it as-is. Do NOT write from scratch when an anchor fits.\n"]
+    for repo, n in cloned.items():
+        nm = repo.rsplit("/", 1)[-1]
+        lines.append(f"- **repo {nm}** ({n} files) → `context/anchor/{nm}/` — {repo}")
+    for u in paper_anchors:
+        lines.append(f"- **paper** → `context/anchor/papers/` — {u}")
+    lines.append("\n## 🔗 Other sources — LINKS only (retrieve on demand with fetch_reference)")
+    lines.append("Use these ONLY if the anchors above are NOT sufficient; fetch the single most relevant one.")
+    for u in gh_ranked[2:] + [o for o in other if o not in used]:
+        tag = "repo" if "github.com" in u else ("paper" if u.endswith(".pdf") or "arxiv" in u else "web")
+        lines.append(f"- [{tag}] {u}")
+    (design_dir / "context").mkdir(parents=True, exist_ok=True)
+    (design_dir / "context" / "sources.md").write_text("\n".join(lines))
+    return {"anchors": cloned, "paper_anchors": paper_anchors,
+            "n_links": len(gh_ranked[2:]) + len(other) - len(used)}
+
+
+def _recall_db_anchor(ctx, design_dir, rec=None, k: int = 3) -> int:
+    """RLM self-memory anchor: when the web didn't clone an anchor (web off, or thin
+    results), pull the CLOSEST past verified RTL the agent itself built — recalled
+    semantically from the knowledge DB (pg/MinIO) — into context/anchor/recalled/ so the
+    generator COPIES+ADAPTS its own proven code instead of starting blank. This is what
+    makes the RLM get better every run: it reuses what worked."""
+    try:
+        mem = get_memory()
+        if not getattr(mem, "enabled", False):
+            return 0
+        adir = Path(design_dir) / "context" / "anchor" / "recalled"
+        items = (mem.recall(ctx["query"], kind="code", k=k)
+                 + mem.recall(ctx["query"], kind="design", k=2))
+        n = 0
+        for it in items:
+            body = it.get("text") or ""
+            okey = it.get("object_key") or ""
+            if okey:                                   # prefer the real file from object storage
+                blob = mem.get_object(okey)
+                if blob:
+                    body = blob.decode("utf-8", "replace")
+            if "endmodule" not in body:                # only anchor on actual RTL
+                continue
+            adir.mkdir(parents=True, exist_ok=True)
+            nm = re.sub(r"[^\w.\-]", "_", (it.get("title") or okey.split("/")[-1] or f"recalled_{n}"))
+            if not nm.endswith((".v", ".vh", ".sv")):
+                nm += ".v"
+            (adir / nm).write_text(body)
+            n += 1
+        if rec and n:
+            rec.success(f"⚓ Recalled {n} past verified design file(s) from the knowledge DB → "
+                        "context/anchor/recalled/ (the RLM adapts its OWN proven RTL).")
+        return n
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _store_web_docs(docs, ctx) -> int:
     """Persist crawled paper/web TEXT into the knowledge store (kind=paper for web,
     code for GitHub) so it's semantically recallable in future runs."""
@@ -622,9 +1359,12 @@ def _store_web_docs(docs, ctx) -> int:
     for d in docs:
         src = d.metadata.get("source", "web") if hasattr(d, "metadata") else "web"
         body = getattr(d, "page_content", "") or ""
-        kind = "code" if "github.com" in str(src) else "paper"
-        if body and mem.remember(kind, body[:6000], design=design, source=str(src),
-                                 title=str(src)[:120], tags="web"):
+        is_code = "github.com" in str(src)
+        if not body or (not is_code and not _is_useful_doc(body, str(src))):
+            continue                              # never store cookie/login/nav junk as a 'paper'
+        kind = "code" if is_code else "paper"
+        if mem.remember(kind, body[:6000], design=design, source=str(src),
+                        title=str(src)[:120], tags="web"):
             n += 1
     return n
 
@@ -783,6 +1523,11 @@ class Recorder:
     def expander_code(self, title, code, language="verilog", expanded=False):
         self._add("expander_code", (title, code, language, expanded))
 
+    def plan(self, items):
+        """The GRAND-PLAN checklist. The planner ticks NOTHING — each item lights up GREEN
+        in the UI as the downstream agents reach its pipeline phase (mapped by keyword)."""
+        self._add("plan", (list(items),))
+
     def table(self, data):
         self._add("table", (data,))
 
@@ -813,17 +1558,57 @@ def _ref_context(ctx) -> str:
     return (f"USER-REQUESTED WEB REFERENCE (use it):\n{ref}\n\n" if ref else "")
 
 
+def _collapse_repeats(text: str, max_occ: int = 3, min_len: int = 8) -> str:
+    """Kill runaway generation: if a non-trivial line repeats more than `max_occ` times
+    (the degenerate 'wire [7:0] …' spam), keep only the first few. Belt-and-braces so a
+    looping model can never write a 2000-line design_notes.md of duplicate signals."""
+    counts: dict = {}
+    out, dropped = [], 0
+    for ln in text.splitlines():
+        key = ln.strip()
+        if len(key) >= min_len:
+            counts[key] = counts.get(key, 0) + 1
+            if counts[key] > max_occ:
+                dropped += 1
+                continue
+        out.append(ln)
+    if dropped:
+        out.append(f"\n<!-- {dropped} runaway/duplicate line(s) trimmed -->")
+    return "\n".join(out)
+
+
+def _planning_context(ctx, limit: int = 12) -> str:
+    """Short digest of what RECALL + RESEARCH gathered (ctx['documents']) — fed into the
+    plan-point generator so the [] [] [] checklist is informed by real references, not blind."""
+    docs = ctx.get("documents", []) or []
+    lines: List[str] = []
+    seen = set()
+    for d in docs[:60]:
+        src = (getattr(d, "metadata", {}) or {}).get("source", "")
+        if src in seen:
+            continue
+        seen.add(src)
+        body = (getattr(d, "page_content", "") or "").strip().replace("\n", " ")
+        lines.append(f"• {src or 'ref'}: {body[:160]}")
+        if len(lines) >= limit:
+            break
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- #
 # Agents — each takes (rec, ctx, feedback) and mutates ctx in place
 # --------------------------------------------------------------------------- #
 def agent_plan(rec, ctx, feedback=""):
+    if ctx.get("deep_steps"):                 # GRAND PLANNER (recall + research + plan)
+        # planning DOES recall + web/github/paper research itself, so the downstream
+        # queue is just build steps — each later agent sub-plans + does its job.
+        ctx["_plan"] = ["generate", "decompose", "testbench", "write", "simulate"]
+        return _deep_plan(rec, ctx, feedback)
     plan = ["retrieve", "web", "generate",
             "decompose", "testbench", "write", "simulate"]
     if not ctx.get("use_web"):
         plan.remove("web")
     ctx["_plan"] = plan
-    if ctx.get("deep_steps"):                 # run the Planner AS a deep agent (RLM)
-        return _deep_plan(rec, ctx, feedback)
     rec.markdown("**Planned build steps:**")
     rec.code("  →  ".join(plan), "text")
     rec.caption("After each step the flow PAUSES so you can Continue / Revise / Replan, "
@@ -887,34 +1672,13 @@ def agent_web(rec, ctx, feedback=""):
             ctx["documents"] = docs + hits
             return
 
-    # Ask the LLM for close HDL building-block terms — derived from THIS request
-    # (no hardcoded accelerator examples), so a RISC-V prompt searches for RISC-V.
-    similar: List[str] = []
-    rec.caption(
-        "🧠 Picking similar HDL building blocks (on-topic for your prompt):")
-    try:
-        with st.spinner("Thinking…"):
-            raw = stream_to(
-                get_chat_model(temperature=0.3),
-                "Given this hardware design request, list 3 short GitHub search phrases "
-                "(max 4 words each) that would find open-source Verilog/VHDL/SystemVerilog "
-                "implementations of THIS design and the core sub-blocks it actually needs. "
-                "Derive the sub-blocks FROM THE REQUEST — e.g. a RISC-V/CPU core needs an "
-                "ALU, register file, instruction decoder; a DSP filter needs multipliers and "
-                "adders; an accelerator needs its datapath (MAC/systolic array). Stay strictly "
-                "on-topic for the request; do NOT suggest unrelated blocks.\n\n"
-                f"REQUEST: '{query}'"
-                + (f"\nUSER STEERING: {feedback}" if feedback else "")
-                + "\n\nReply ONLY as a comma-separated list.",
-                rec.placeholder(),
-            )
-        txt = clean_llm_output(raw)
-        similar = [s.strip() for s in re.split(r"[,\n]", txt)
-                   if 2 < len(s.strip()) < 50][:3]
-    except Exception:  # noqa: BLE001
-        similar = []
+    # SEARCH THE PROMPT + CLOSE VARIANTS — same policy as the deep-agent researcher: the
+    # primary query is the request verbatim, and 'similar' are WHOLE-DESIGN rephrasings
+    # (deterministic, zero model variance), NOT sub-block decompositions ('alu, regfile,
+    # decoder') which dragged the search off-topic and hurt results.
+    similar = _design_variants(query, 3)
     if similar:
-        rec.caption("🔁 Similar-IP search terms: " +
+        rec.caption("🔁 Similar-design search terms: " +
                     ", ".join(f"`{s}`" for s in similar))
 
     with st.spinner("Searching GitHub (HDL) + web…"):
@@ -1018,17 +1782,23 @@ REQUEST:
 
 
 def _top_module(blocks: List[str], names: List[str]) -> str:
-    """Pick the top module structurally: the one no OTHER module instantiates.
-    Falls back to the largest module if every name is referenced somewhere."""
+    """Pick the top module structurally: among modules no OTHER module instantiates,
+    prefer the INTEGRATION module — the one that instantiates the most sub-modules,
+    with a name bonus for top/soc/cpu/core. (Picking candidates[0] used to select a
+    stray leaf like `alu`, so the testbench tested the wrong module.)"""
     instantiated = set()
+    refs = {}
     for nm, b in zip(names, blocks):
-        for other in names:
-            if other != nm and re.search(rf"\b{re.escape(other)}\b", b):
-                instantiated.add(other)
-    candidates = [n for n in names if n not in instantiated]
-    if candidates:
-        return candidates[0]
-    return names[max(range(len(blocks)), key=lambda i: len(blocks[i]))]
+        body = b[b.find(";") + 1:]            # skip the module's own header
+        refs[nm] = {other for other in names
+                    if other != nm and re.search(rf"\b{re.escape(other)}\b", body)}
+        instantiated |= refs[nm]
+    candidates = [n for n in names if n not in instantiated] or names
+
+    def score(n):
+        bonus = 1 if re.search(r"top|soc|cpu|core|system", n, re.I) else 0
+        return (len(refs.get(n, ())), bonus, len(blocks[names.index(n)]))
+    return max(candidates, key=score)
 
 
 def agent_decompose(rec, ctx, feedback=""):
@@ -1086,8 +1856,11 @@ def agent_decompose(rec, ctx, feedback=""):
 
 
 def agent_testbench(rec, ctx, feedback=""):
-    if ctx.get("deep_steps"):                 # run the Testbench Writer AS a deep agent (RLM)
-        return _deep_testbench(rec, ctx, feedback)
+    # The testbench is a BOUNDED task: read the top module's ports, write ONE self-checking
+    # tb. It is NOT run as a deep agent — the deep-agent path has no repetition breaker and
+    # makes several full-length LLM calls, so it repeatedly blew past OLLAMA_TIMEOUT (the
+    # "testbench timed out" crashes). The one-shot path below uses stream_to, which DOES have
+    # the repetition circuit-breaker, and needs a single call: far faster and more reliable.
     files = ctx["decomposed_files"]
     top = ctx["top_module_name"]
     top_code = files.get(f"{top}.v", next(iter(files.values())))
@@ -1126,6 +1899,11 @@ DUT (`{top}.v`):
         tb = {k: dedup_modules(v) for k, v in tb.items()}
     except Exception:  # noqa: BLE001
         tb = {f"{top}_tb.v": extract_code_block(resp)}
+    try:                                          # repair the `}`-block-close tic in the tb too
+        from verilog_check import autofix_text
+        tb = {k: autofix_text(v)[0] for k, v in tb.items()}
+    except Exception:  # noqa: BLE001
+        pass
     rec.success(f"Testbench `{next(iter(tb))}`:")
     rec.code(next(iter(tb.values())), language="verilog")
     ctx["testbench_code"] = tb
@@ -1157,12 +1935,55 @@ def agent_simulate(rec, ctx, feedback=""):
     rtl_dir, tb_dir, sim_dir = design_dir / \
         "rtl", design_dir / "tb", design_dir / "sim"
     sim_dir.mkdir(parents=True, exist_ok=True)
-    vfiles = sorted(glob.glob(str(rtl_dir / "*.v"))) + \
-        sorted(glob.glob(str(tb_dir / "*.v")))
+
+    # ---- deterministic pre-flight (verilog_check) -------------------------
+    # 1) re-derive the REAL top structurally (the integration module, not a leaf);
+    # 2) compile ONLY the dependency cone of the top + what the testbench uses —
+    #    stale/duplicate orphan files can never break the build again;
+    # 3) static-audit that cone (unknown ports, bare `define macros, duplicate
+    #    modules) and fail FAST with actionable findings instead of a 70-line
+    #    iverilog elaboration wall.
+    from verilog_check import pick_top, closure_files, full_report, parse_rtl
+    info = parse_rtl(rtl_dir)
+    top = ctx.get("top_module_name") or ""
+    if top not in info["defs"]:
+        top = pick_top(rtl_dir)
+        if top:
+            ctx["top_module_name"] = top
+    tb_files = sorted(glob.glob(str(tb_dir / "*.v")))
+    needed: set = set()
+    tops = {top} if top else set()
+    for tbf in tb_files:                       # modules the testbench instantiates
+        body = Path(tbf).read_text(errors="replace")
+        tops.update(m for m in info["defs"] if re.search(rf"\b{re.escape(m)}\b", body))
+    orphans: List[str] = []
+    for t in tops:
+        fs, orph = closure_files(rtl_dir, t)
+        needed.update(fs)
+        orphans = orph                          # same orphan list each call
+    orphans = [o for o in orphans if o not in needed]
+    if orphans:
+        rec.caption(f"🧹 Excluding {len(orphans)} unused/stale file(s) from the build: "
+                    + ", ".join(orphans[:10]))
+    vfiles = [str(rtl_dir / f) for f in needed
+              if f.endswith(".v") and (rtl_dir / f).exists()] or \
+        sorted(glob.glob(str(rtl_dir / "*.v")))
+    vfiles = sorted(vfiles) + tb_files
     if not vfiles:
         rec.error("No Verilog files to simulate.")
         ctx["simulation_output"] = "Error: no Verilog files."
         return
+
+    audit = full_report(rtl_dir, top, only=needed or None)
+    if audit:
+        rec.error("❌ Static structure check failed — precise findings routed to the corrector "
+                  "(faster + clearer than raw elaboration errors):")
+        rec.code(audit[:2500], language="text")
+        (sim_dir / "simulation.log").write_text("STATIC CHECK FAILED:\n" + audit)
+        ctx["simulation_output"] = "STATIC CHECK FAILED (fix EVERY finding):\n" + audit
+        ctx["error_count"] = ctx.get("error_count", 0) + 1
+        return
+
     compile_cmd = ["iverilog", "-g2005-sv", "-o",
                    str(sim_dir / "design.vvp"), "-I", str(rtl_dir), *vfiles]
     rec.write("**Compile:**")
@@ -1264,39 +2085,44 @@ def agent_fix_design(rec, ctx, feedback=""):
     # In the sim loop this is the simulation error; in the lint loop (sim already
     # passed, so simulation_output is empty) it's the Verilator lint error.
     err = ctx.get("simulation_output") or ctx.get("lint_output", "")
-    faulty = next((f for f in files if f in err),
-                  None) or f"{ctx['top_module_name']}.v"
-    faulty = faulty if faulty in files else next(iter(files))
-    history = dict(ctx.get("fix_history", {}))
-    past = history.get(faulty, [])
-    tried = past + [files[faulty]]
-    rec.write("**Compiler/sim errors fed to the model:**")
+    faulty_list = _faulty_files(files, err, ctx.get("top_module_name", ""))
+    rec.write("**Compiler/sim errors fed to the model** "
+              f"(fixing {len(faulty_list)} file(s): {', '.join(faulty_list)}):")
     rec.code(err[:1800], language="text")
-    rec.expander_code(
-        f"Current (broken) `{faulty}` given to the corrector", files[faulty], "verilog")
     attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
     temp = min(0.2 + 0.18 * attempt, 0.85)
-    if past:
-        rec.caption(f"⛔ {len(past)} earlier fix(es) of `{faulty}` failed — all are shown to the model "
-                    "with an explicit 'do NOT reproduce these' so it stops looping on the same code.")
     rec.caption(
         f"Attempt {attempt + 1} · temperature {temp:.2f} (raised each retry to avoid the same fix).")
 
-    # DEEP-AGENT BEHAVIOR: when stuck (≥2 prior failed fixes of this file), the corrector
-    # researches the error ITSELF — first from persistent MEMORY, else live from the WEB —
-    # and injects the fix into its own prompt. Re-researches every few attempts if needed.
-    if len(past) >= 2 and (len(past) - 2) % 3 == 0:
-        sig = _error_query(err)
-        remembered = recall_fix(sig)
-        if remembered:
-            ctx["web_example"] = remembered
-            rec.caption(f"🧠 Recalled a remembered fix for this error: *{sig}*")
-        else:
-            hint = _auto_research(sig, rec)
-            if hint:
-                ctx["web_example"] = hint
-                # persist so the next run solves it instantly
-                remember_fix(sig, hint)
+    # ALWAYS recall a stored lesson for this error class first (knowledge DB) — a past
+    # run's fix usually solves it on attempt 1. Fall back to live web research when stuck.
+    sig = _error_query(err)
+    remembered = recall_fix(sig)
+    if remembered:
+        ctx["web_example"] = remembered
+        rec.caption(f"🧠 Recalled a stored lesson for this error: *{sig}*")
+    elif attempt >= 2 and attempt % 3 == 2:
+        hint = _auto_research(sig, rec)
+        if hint:
+            ctx["web_example"] = hint
+            # persist so the next run solves it instantly
+            remember_fix(sig, hint)
+
+    history = dict(ctx.get("fix_history", {}))
+    for faulty in faulty_list:
+        _fix_one_module(rec, ctx, files, history, faulty, err, attempt, temp, feedback)
+    ctx["decomposed_files"] = files
+    ctx["fix_history"] = history
+
+
+def _fix_one_module(rec, ctx, files, history, faulty, err, attempt, temp, feedback=""):
+    past = history.get(faulty, [])
+    tried = past + [files[faulty]]
+    rec.expander_code(
+        f"Current (broken) `{faulty}` given to the corrector", files[faulty], "verilog")
+    if past:
+        rec.caption(f"⛔ {len(past)} earlier fix(es) of `{faulty}` failed — all are shown to the model "
+                    "with an explicit 'do NOT reproduce these' so it stops looping on the same code.")
 
     prior_block = "\n\n".join(
         f"FAILED ATTEMPT #{i + 1} (already tried — it did NOT work, do not reproduce it):\n"
@@ -1356,8 +2182,19 @@ BROKEN MODULE (`{name}`) — rewrite it correctly:
     history[faulty] = tried + [fixed]
     rec.success(f"Corrected `{faulty}`:")
     rec.code(fixed, language="verilog")
-    ctx["decomposed_files"] = files
-    ctx["fix_history"] = history
+    # verified fix → durable lesson in the knowledge DB (don't repeat this mistake)
+    try:
+        from verilog_check import check_file
+        rtl_dir = Path(ctx["design_dir"]) / "rtl"
+        p = rtl_dir / faulty
+        p.write_text(fixed)
+        if not check_file(p, rtl_dir):
+            sig = _error_query(err)
+            if sig:
+                remember_fix(sig, "", design=Path(ctx["design_dir"]).name,
+                             broken=(tried[-1] if tried else ""), fixed=fixed)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def agent_fix_testbench(rec, ctx, feedback=""):
@@ -1447,20 +2284,46 @@ def agent_harden(rec, ctx, feedback=""):
         shutil.rmtree(chip_dir)
     src_dir.mkdir(parents=True, exist_ok=True)
 
+    # Synthesize ONLY the top module's dependency cone — the SAME closure simulation
+    # verified. Over-decomposition leaves orphan modules in rtl/ that the design never
+    # uses; copying them into synthesis lets a stray orphan (possibly with a syntax
+    # error) fail Yosys even though the real design is clean. Headers (.vh) are always
+    # copied so `include resolves.
+    from verilog_check import closure_files, pick_top
+    rtl_dir = design_dir / "rtl"
+    top = design_name if (rtl_dir / f"{design_name}.v").exists() else pick_top(rtl_dir)
+    closure, orphans = closure_files(rtl_dir, top)
+    if orphans:
+        rec.caption(f"🧹 Synthesizing only the `{top}` cone — excluding "
+                    f"{len(orphans)} unused module(s): " + ", ".join(orphans[:10]))
     design_files = []
-    for p in sorted(glob.glob(str(design_dir / "rtl" / "*.v"))) + sorted(glob.glob(str(design_dir / "rtl" / "*.vh"))):
-        name = os.path.basename(p)
+    want = set(closure) or {p.name for p in rtl_dir.glob("*.v")}
+    want |= {p.name for p in rtl_dir.glob("*.vh")}      # always include headers
+    for p in sorted(rtl_dir.glob("*.v")) + sorted(rtl_dir.glob("*.vh")):
+        name = p.name
         if "tb" in name.lower() or "testbench" in name.lower():
+            continue
+        if name not in want:
             continue
         shutil.copy(p, src_dir / name)
         if name.endswith(".v"):
             design_files.append(f"dir::src/{name}")
 
     core_util = int(ctx["core_util"])
+    # RELATIVE floorplan sizing: let LibreLane compute the die from the synthesized cell
+    # area + target utilization, instead of a FIXED absolute die. A hardcoded die is the
+    # #1 PnR failure for an auto-generated design of unknown size — too small and
+    # placement/legalization fails ("cannot place: utilization exceeds 100%"). Relative
+    # sizing can't be undersized. Set LIBRELANE_ABSOLUTE_DIE=1 to force the old fixed die.
+    absolute = os.getenv("LIBRELANE_ABSOLUTE_DIE", "0") in ("1", "true", "yes")
+    sizing = ({"FP_SIZING": "absolute",
+               "DIE_AREA": [0, 0, float(ctx["die_um"]), float(ctx["die_um"])]}
+              if absolute else
+              {"FP_SIZING": "relative", "FP_CORE_UTIL": core_util})
     config = {
         "DESIGN_NAME": design_name, "VERILOG_FILES": design_files,
         "CLOCK_PORT": ctx["clock_port"], "CLOCK_PERIOD": ctx["clock_period"], "PDK": PDK,
-        "FP_SIZING": "absolute", "DIE_AREA": [0, 0, float(ctx["die_um"]), float(ctx["die_um"])],
+        **sizing,
         "FP_CORE_UTIL": core_util, "PL_TARGET_DENSITY_PCT": max(20, core_util + 5),
         "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
         # --- Keep Verilator lint INFORMATIVE but NON-FATAL ---
@@ -1793,7 +2656,13 @@ def _render_deep_msg(rec, m) -> str:
         if text:
             rec.markdown(text)
         for tc in (getattr(m, "tool_calls", None) or []):
+            # DEFENSIVE: a local model can emit a malformed tool call (tc as a str, or
+            # args as a JSON string) — never let that crash the whole step.
+            if not isinstance(tc, dict):
+                continue
             name, args = tc.get("name"), (tc.get("args") or {})
+            if not isinstance(args, dict):
+                args = {"input": args}
             if name == "write_todos":                       # show the plan as a checklist
                 rec.markdown(_format_todos(args.get("todos", [])))
             else:
@@ -1822,7 +2691,13 @@ def _stream_deep_agent(rec, agent, goal, recursion_limit=60) -> str:
     with whatever it has (and the step's own 'did it produce output?' check decides)."""
     seen, final = 0, ""
     calls: Dict[str, int] = {}
-    stop = False
+    writes: Dict[str, int] = {}      # per-PATH write count — catches fixation on ONE file
+    stop = reason = ""
+    # tools that ARE the work — never count these as "spinning". A write of a NEW path
+    # clears the spin counter (real progress); but REWRITING the SAME path over and over
+    # is fixation, not progress — qwen will rewrite one broken module 60× with the same
+    # bug, resetting the old guard each time and burning an hour. So we bound writes/path.
+    _progress = {"write_file_disk", "run_python", "pip_install"}
     with st.spinner("🧠 Deep agent working (planning · tools · sub-tasks)…"):
         for state in agent.stream({"messages": [{"role": "user", "content": goal}]},
                                   stream_mode="values", config={"recursion_limit": recursion_limit}):
@@ -1832,14 +2707,34 @@ def _stream_deep_agent(rec, agent, goal, recursion_limit=60) -> str:
                 if text:
                     final = text
                 for tc in (getattr(m, "tool_calls", None) or []):
-                    sig = f"{tc.get('name')}|{json.dumps(tc.get('args', {}), sort_keys=True)[:300]}"
+                    if not isinstance(tc, dict):
+                        continue
+                    name = tc.get("name")
+                    if name == "write_file_disk":
+                        path = str((tc.get("args") or {}).get("path", "?"))
+                        writes[path] = writes.get(path, 0) + 1
+                        if writes[path] >= 4:    # rewrote ONE file 4× → fixating → stop
+                            stop, reason = "fixate", path
+                        elif writes[path] <= 2:  # genuine forward progress → reset spin guard
+                            calls.clear()
+                        continue
+                    if name in _progress:        # python/pip = real work → reset spin guard
+                        calls.clear()
+                        continue
+                    try:
+                        sig = f"{name}|{json.dumps(tc.get('args', {}), sort_keys=True, default=str)[:300]}"
+                    except Exception:  # noqa: BLE001
+                        sig = str(name)
                     calls[sig] = calls.get(sig, 0) + 1
-                    if calls[sig] >= 3:          # same exact call 3× → it's stuck
-                        stop = True
+                    if calls[sig] >= 4:          # same non-productive call 4× → stuck
+                        stop, reason = "spin", sig
             seen = len(msgs)
-            if stop:
-                rec.warning("↩︎ The agent repeated the same tool call — stopping it so it "
-                            "doesn't spin. Proceeding with what it has.")
+            if stop == "fixate":
+                rec.caption(f"↩︎ stopped looping on `{reason}` — the silent completion pass will "
+                            "finish it from the anchor.")
+                break
+            if stop == "spin":
+                rec.caption("↩︎ stopped a non-productive spin — proceeding with what it has.")
                 break
     return final
 
@@ -2035,7 +2930,38 @@ def _step_tools(rec, base_dir=None):
         ok = _show_waveform(rec, p, out, signals, int(cycles))
         return "waveform shown" if ok else "(could not render the waveform from that VCD)"
 
-    tools = [search_web, recall_memory, show_image, show_waveform]
+    @tool
+    def fetch_reference(url: str) -> str:
+        """Retrieve ONE more reference ON DEMAND from a link in context/sources.md — use
+        this only if the ANCHOR design in context/anchor/ is NOT a good fit for the spec.
+        For a GitHub repo it fetches the real HDL; for a paper/web page it crawls the text.
+        The result is also saved under context/refs/ so you can read_file_disk it. Pass the
+        exact URL from context/sources.md."""
+        url = (url or "").strip()
+        if not url.startswith("http"):
+            return "(pass a full URL from context/sources.md)"
+        try:
+            if "github.com" in url:
+                code = _github_code_text(url, max_files=8, max_chars=9000)
+                if code:
+                    p = base / "context" / "refs" / (re.sub(r"[^\w]", "_", url)[-60:] + ".v")
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(code)
+                    rec.caption(f"🔗 Fetched reference repo on demand: {url}")
+                    return f"Saved HDL to {p.relative_to(base)}.\n\n{code[:3500]}"
+            docs = _crawl_urls([url], rec, limit=1)
+            if docs:
+                body = docs[0].page_content[:3500]
+                p = base / "context" / "refs" / (re.sub(r"[^\w]", "_", url)[-60:] + ".md")
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(docs[0].page_content[:9000])
+                rec.caption(f"🔗 Fetched reference on demand: {url}")
+                return f"Saved to {p.relative_to(base)}.\n\n{body}"
+        except Exception as e:  # noqa: BLE001
+            return f"(could not fetch {url}: {e})"
+        return f"(nothing usable at {url})"
+
+    tools = [search_web, recall_memory, show_image, show_waveform, fetch_reference]
 
     # --- durable knowledge store (pgvector + MinIO): recall / fetch / remember ---
     mem = get_memory()
@@ -2134,6 +3060,26 @@ def _collect_rtl_from_disk(design_dir: Path) -> str:
     return "\n\n".join(p.read_text() for p in headers + mods)
 
 
+def _planned_rtl_files(sub):
+    """From the generate sub-plan, the RTL files (.v/.vh) that MUST exist on disk before the
+    step is 'done' — excludes the testbench and any python helper scripts. Returns
+    (files:list[str], top:str|None) so the step can be gated on real completeness, never
+    advancing with a partial design."""
+    files, top = [], None
+    for line in sub:
+        m = re.search(r"([A-Za-z0-9_]+\.(?:vh|v))\b", line)
+        if not m:
+            continue
+        fn = m.group(1)
+        low = line.lower()
+        if "_tb" in fn.lower() or "tb." in fn.lower() or "testbench" in low or "test bench" in low:
+            continue                      # the testbench is a SEPARATE step
+        files.append(fn)
+        if top is None and any(k in low for k in ("top", "integrat")):
+            top = fn
+    return list(dict.fromkeys(files)), top
+
+
 def _deep_generate(rec, ctx, feedback=""):
     """Verilog Generator as an RLM deep agent: plans, peeks at offloaded references,
     delegates per-module drafts to llm_query, writes RTL to disk, returns the code —
@@ -2149,32 +3095,197 @@ def _deep_generate(rec, ctx, feedback=""):
     if ctx.get("uploads_digest"):
         ref_note += ("The user ATTACHED files/images — they're included in that context under "
                      "'User-attached files' (and saved under context/uploads/). Use them.\n")
+    # LESSONS from past runs (knowledge DB): the error→fix pairs stored every time a
+    # corrector verified a fix — injected BEFORE generation so the same syntax /
+    # structure mistakes aren't made again in the first place.
+    lessons_note = ""
+    try:
+        mem = get_memory()
+        if mem.enabled:
+            items = mem.recall(ctx["query"] + " verilog error fix", kind="fix", k=3)
+            body = "\n\n".join((it.get("text") or "")[:1200] for it in items if it.get("text"))
+            if body:
+                (design_dir / "context").mkdir(parents=True, exist_ok=True)
+                (design_dir / "context" / "lessons.md").write_text(
+                    "# Lessons from past runs (verified error→fix pairs)\n\n" + body)
+                lessons_note = ("PAST LESSONS: `context/lessons.md` holds verified error→fix "
+                                "lessons from previous runs — read it and do NOT repeat those "
+                                "mistakes.\n")
+                rec.caption(f"🧠 Recalled {len(items)} past error→fix lesson(s) from the knowledge store.")
+    except Exception:  # noqa: BLE001
+        pass
+    # ANCHOR + ADAPT: if the researcher cloned a close-match repo to context/anchor/, the
+    # generator COPIES the nearest module from it and EDITS it to the spec, instead of
+    # writing from scratch (far more reliable for a 9B model — it edits working code). Other
+    # sources are links in context/sources.md, fetched on demand only if the anchor misfits.
+    anchor_note = ""
+    anchor_dir = design_dir / "context" / "anchor"
+    # If the web researcher didn't clone an anchor (web off / thin results), anchor on the
+    # closest past verified design from the RLM's OWN memory (knowledge DB).
+    if not (anchor_dir.exists() and (sorted(anchor_dir.rglob("*.v")) + sorted(anchor_dir.rglob("*.sv")))):
+        _recall_db_anchor(ctx, design_dir, rec)
+    anchor_files = sorted(anchor_dir.rglob("*.v")) + sorted(anchor_dir.rglob("*.sv")) if anchor_dir.exists() else []
+    papers = sorted((anchor_dir / "papers").glob("*.txt")) + sorted((anchor_dir / "papers").glob("*.md")) \
+        if (anchor_dir / "papers").exists() else []
+    if anchor_files or papers:
+        listing = "\n".join(f"  - {p.relative_to(design_dir)}" for p in (anchor_files[:24] + papers[:4]))
+        anchor_note = (
+            "⚓ ANCHOR-AND-ADAPT (the preferred way — do this FIRST): the closest matching design(s) "
+            "are on disk under `context/anchor/` (RTL repos and/or paper text). For EACH module you "
+            "need: grep_files/read_file_disk the anchor for the nearest equivalent, then —\n"
+            "  • if it MATCHES the spec → COPY it almost VERBATIM (keep the working logic);\n"
+            "  • if it's CLOSE → copy it and EDIT only what the spec changes (widths, ports, ops);\n"
+            "  • NEVER write from a blank page when an anchor module fits.\n"
+            "Anchor files:\n" + listing + "\n"
+            "ONLY if NONE of the anchors fit a module: read `context/sources.md` and call "
+            "fetch_reference(<url>) to pull ONE better source, then adapt that. Keep YOUR context "
+            "small — peek slices, don't read whole files.\n")
+    # RESUME, don't RESTART: if RTL already exists on disk (the step was interrupted/paused
+    # and is re-running), tell the agent what is ALREADY DONE so it CONTINUES from there
+    # instead of regenerating every module from scratch (the wasteful "continue restarts
+    # generation" bug). It only writes the still-missing modules.
+    resume_note = ""
+    rtl_dir0 = design_dir / "rtl"
+    existing = [p.name for p in sorted(rtl_dir0.glob("*.vh")) + sorted(rtl_dir0.glob("*.v"))] \
+        if rtl_dir0.exists() else []
+    if len(existing) >= 2:
+        resume_note = (
+            "▶️ RESUME — this design is PARTIALLY BUILT. These files ALREADY EXIST on disk and are "
+            "good; do NOT rewrite them, do NOT start over:\n  " + ", ".join(existing) + "\n"
+            "CONTINUE from here: write ONLY the modules that are still missing, then finish. "
+            "(If one of the existing files has a known bug, you may fix that single file, but never "
+            "regenerate the whole design.)\n")
+    # the LOCKED file list (decided once by the architect in design_notes.md, reused verbatim
+    # on every entry) — NOT re-rolled here, so the displayed plan, the agent's write_todos and
+    # the completeness gate all track the SAME modules.
+    sub = _subplan(rec, ctx["query"], "generate", feedback, design_dir=design_dir)
+    sub_note = ("THE FILES TO WRITE — this is the LOCKED plan; your write_todos MUST be EXACTLY "
+                "these filenames, in this order (do NOT rename, split, merge, or add modules):\n"
+                + "\n".join(f"- {p}" for p in sub) + "\n") if sub else ""
     goal = (
         f"Design complete, synthesizable Verilog-2001 for this hardware: {ctx['query']}.\n"
         + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + resume_note
+        + sub_note
+        + _SUBPLAN
+        + anchor_note
         + ref_note
-        + "Plan the sub-modules with write_todos. For each non-trivial sub-module you MAY delegate a "
+        + lessons_note
+        + "EVERY write_file_disk of a .v file returns a COMPILE CHECK result — if it reports "
+          "errors, FIX that file and write it again immediately; never leave a file broken.\n"
+          "If your modules share `define macros, put them in rtl/params.vh, reference them WITH "
+          "the backtick (`WIDTH), and `include \"params.vh\" in every file that uses them.\n"
+        + "For each non-trivial sub-module you MAY delegate a "
           "focused draft to llm_query (give it just that module's spec). Use search_web only if a "
           "reference is genuinely missing.\n"
-          "If the design is DATA-DRIVEN (a LUT for relu/softmax/sigmoid/sin, filter taps, or NN "
-          "weights), COMPUTE the values with run_python (numpy/torch) — pip_install what you need — "
-          "QUANTIZE to int or Qm.n fixed-point, write them to rtl/<name>.mem and load with "
-          "$readmemh/$readmemb, or bake the constants into the RTL.\n"
+          "ONLY IF the design is genuinely DATA-DRIVEN (a function LUT to linearize like "
+          "relu/softmax/sigmoid/sin, filter taps, or NN weights to train) COMPUTE the values with "
+          "run_python (numpy/torch) — pip_install what you need — QUANTIZE to int or Qm.n "
+          "fixed-point, write them to rtl/<name>.mem and load with $readmemh/$readmemb (or bake the "
+          "constants into the RTL). The Python is a throw-away generator for the .mem — do NOT add a "
+          ".py file to the design. For ordinary arithmetic, use NO Python at all.\n"
           "WRITE each module to rtl/<name>.v with write_file_disk, then reply with the COMPLETE "
           "top-level Verilog in ONE ```verilog block.\n"
         + VERILOG_PITFALLS
     )
     final = run_deep_agent(rec, design_dir, goal,
                            extra_tools=_step_tools(rec, design_dir), temperature=0.2)
-    gen = extract_code_block(final)
-    if "endmodule" not in gen:                    # final reply was a plan/transcript, not RTL
-        # → use whatever modules it wrote to disk
-        _sync_ctx_from_disk(ctx)
-        disk = _collect_rtl_from_disk(design_dir)
-        if "endmodule" in disk:
-            gen = disk
-    if "endmodule" in gen:
-        rec.success("Generated RTL (deep agent):")
+
+    # COMPLETENESS GATE — the generator must write EVERY planned RTL module before we move on.
+    # If it stopped early (loop guard, repeated call, etc.), FINISH the missing modules HERE;
+    # never advance to decompose with a partial design.
+    planned, _top = _planned_rtl_files(sub)
+    rtl_dir = design_dir / "rtl"
+
+    def _missing():
+        """A planned file is satisfied by an exact stem match, a defined module of that
+        name, OR a file the agent SPECIALIZED from the generic planned name — planned
+        `alu.v` → wrote `alu_8bit.v`, where the planned stem is a LEADING TOKEN of an
+        existing stem (`alu_8bit`.startswith(`alu_`)). Matching this variant avoids the
+        duplicate-module bug (the gate forcing a second `alu.v`).
+
+        The match is DIRECTIONAL on purpose: a SHORTER existing stem must NOT satisfy a
+        LONGER planned one — an existing `mem.v` does NOT mark a planned `mem_access.v`
+        as done. The old symmetric `stem in h or h in stem` did exactly that, so a
+        still-unwritten `mem_access.v` was silently counted as finished and the
+        "modules unwritten" tally under-reported. This keeps the count honest."""
+        from verilog_check import parse_rtl
+        have_stems = {p.stem.lower() for p in rtl_dir.glob("*.v")} | \
+                     {p.stem.lower() for p in rtl_dir.glob("*.vh")}
+        have_stems |= {m.lower() for m in parse_rtl(rtl_dir)["defs"]}
+        out = []
+        for f in planned:
+            stem = re.sub(r"\.(vh|v)$", "", f).lower()
+            if any(h == stem or (len(stem) > 2 and h.startswith(stem + "_"))
+                   for h in have_stems):
+                continue
+            out.append(f)
+        return out
+    def _broken():
+        """Files already written that FAIL their single-file compile check. The agent
+        sometimes ignores the COMPILE ERRORS feedback in the write result and moves on —
+        the completeness gate treats a broken file as NOT DONE, so generation can't
+        finish until every file compiles clean."""
+        from verilog_check import check_file
+        out = {}
+        for p in sorted(rtl_dir.glob("*.v")):
+            err = check_file(p, rtl_dir)
+            if err:
+                out[p.name] = err
+        return out
+
+    miss, broken = _missing(), _broken()
+    # SILENT completion/repair: finish the locked plan and fix any compile failure QUIETLY,
+    # grounding each fix in the anchor / references — no "generation not finished" warnings.
+    has_anchor = (design_dir / "context" / "anchor").exists()
+    has_sources = (design_dir / "context" / "sources.md").exists()
+    for _pass in range(3):
+        if not miss and not broken:
+            break
+        rec.caption("🔧 quietly finishing the locked plan from the anchor & references…")
+        have = sorted(rtl_dir.glob("*.vh")) + sorted(rtl_dir.glob("*.v"))
+        done_now = ", ".join(p.name for p in have) or "(none)"
+        broken_note = "".join(
+            f"- FIX rtl/{f} — its compile errors:\n{e[:500]}\n" for f, e in broken.items())
+        ground = (
+            "For EVERY file below, do NOT write from a blank page or guess: FIRST "
+            "grep_files/read_file_disk the closest module in `context/anchor/` and COPY+ADAPT its "
+            "WORKING code (adapt only widths/ports/ops to the spec)."
+            + (" If no anchor module fits, read `context/sources.md` and fetch_reference(<url>) ONE "
+               "better source, then adapt that." if has_sources else "")
+            + "\n" if (has_anchor or has_sources) else "")
+        goal2 = (
+            f"You are STILL generating RTL for: {ctx['query']}. Already written: {done_now}.\n"
+            + ground
+            + ("WRITE THE MISSING FILES NOW — complete and synthesizable, ONE write_file_disk call "
+               "each, reusing the interfaces in design_notes.md and the existing modules. Do NOT "
+               "rewrite working files:\n" + "\n".join(f"- rtl/{f}" for f in miss) + "\n"
+               if miss else "")
+            + (("These files FAILED their compile check — read each, fix the exact errors "
+                "(use the anchor's working version as the reference), write it back; the write "
+                "result must say 'compile check clean':\n" + broken_note)
+               if broken else "")
+            + "When every file exists AND compiles clean, reply 'done'.\n" + VERILOG_PITFALLS
+        )
+        run_deep_agent(rec, design_dir, goal2,
+                       extra_tools=_step_tools(rec, design_dir), temperature=0.2)
+        miss, broken = _missing(), _broken()
+
+    _sync_ctx_from_disk(ctx)
+    gen = _collect_rtl_from_disk(design_dir)
+    if "endmodule" not in gen:                    # nothing usable on disk — fall back to the reply
+        gen = extract_code_block(final)
+    ctx["_gen_planned"] = planned
+    ctx["_gen_missing"] = miss                     # the runner gates on this — won't advance if set
+
+    if "endmodule" in gen and not miss:
+        rec.success(f"Generated RTL (deep agent)"
+                    + (f" — all {len(planned)} planned module(s) written:" if planned else ":"))
+        rec.code(gen, language="verilog")
+    elif "endmodule" in gen and miss:
+        rec.error(f"Generation INCOMPLETE — still missing {len(miss)} module(s): "
+                  + ", ".join(miss) + ". This step will RETRY; it will NOT advance to decompose "
+                  "with a partial design.")
         rec.code(gen, language="verilog")
     else:                                          # be honest instead of showing the plan as "RTL"
         rec.error("Deep agent produced no usable Verilog (only a plan/transcript). "
@@ -2185,24 +3296,94 @@ def _deep_generate(rec, ctx, feedback=""):
 
 
 def _deep_plan(rec, ctx, feedback=""):
-    """Planner (step 1) as a deep agent: plans the sub-blocks with todos and writes a
-    concise architecture note to disk. The deterministic build queue (ctx['_plan'])
-    is unchanged — this upgrades only the design reasoning."""
-    rec.caption("🧠 RLM deep-agent planner — architecture decomposition + todos.")
+    """GRAND PLANNER (Claude-Code style): write the GENERAL plan FIRST (from the spec alone),
+    THEN execute each step's tooling — recall, then web/GitHub/paper research (which clones the
+    anchor), then the build CONTRACT (design_notes.md) whose module map mirrors the anchor's
+    blocks. It writes ONLY the plan & boilerplate interfaces — NOT full RTL. Each later agent
+    reads this grand plan, sub-plans against the LOCKED file list, and does its job."""
+    rec.caption("🧠 GRAND PLANNER (Claude-Code style) — write the general plan FIRST, then work it.")
     rec.markdown("**Planned build steps:**")
-    rec.code("  →  ".join(ctx["_plan"]), "text")
-    rec.caption(
-        "After each step the flow PAUSES so you can Continue / Revise / Replan.")
+    rec.code("  →  ".join(["plan"] + ctx["_plan"]), "text")
     design_dir = Path(ctx["design_dir"])
-    goal = (
-        f"You are the architecture planner. Hardware to build: {ctx['query']}.\n"
-        + (f"USER STEERING: {feedback}\n" if feedback else "")
-        + "Use write_todos to outline the sub-blocks. Then WRITE a concise architecture note to "
-          "design_notes.md: the top module, each sub-module with a one-line role and its key "
-          "interface, and the main verification concerns. Keep it under ~30 lines. Reply with the note."
-    )
-    run_deep_agent(rec, design_dir, goal,
-                   extra_tools=_step_tools(rec, design_dir), temperature=0.3)
+    constraints = _constraints_note(ctx)        # real PDK/clock — no hallucinated node
+
+    # 1) GRAND PLAN FIRST — like Claude Code's plan step. Write the GENERAL, ordered intentions
+    #    ("search the architecture", "search github/paper/web", "module map", "generate", "tb",
+    #    "simulate", "lint", "harden within constraints") from the SPEC ALONE — we do NOT recall
+    #    or research before planning. Each plan item is then EXECUTED with its tooling below.
+    points = _plan_points(rec, ctx["query"], feedback, constraints=constraints)
+    ctx["_plan_points"] = points   # later agents (generator, testbench…) sub-plan against these
+
+    # 2) EXECUTE "search the architecture / prior knowledge" → RECALL from the store (DB).
+    try:
+        agent_retrieve(rec, ctx, feedback)
+    except Exception as e:  # noqa: BLE001
+        rec.warning(f"recall skipped: {e}")
+
+    # 3) EXECUTE "search GitHub / papers / web" → live research + clone the anchor.
+    if ctx.get("use_web"):
+        try:
+            _deep_web(rec, ctx, feedback)
+        except Exception as e:  # noqa: BLE001
+            rec.warning(f"research skipped: {e}")
+
+    # 4) the build CONTRACT (design_notes.md): the architecture + BOILERPLATE module
+    #    interfaces (port lists) + connections + verification — generated DIRECTLY (no file
+    #    tools), so the planner produces the plan/skeleton, NEVER full RTL implementations.
+    rec.caption("🧠 Reasoning the architecture → the build contract…")
+    refs = _ref_context(ctx)
+    # SEE WHAT'S INSIDE THE ANCHOR BEFORE deciding the modules: base the Module Map on the
+    # blocks the reference design actually has (same decomposition, adapt widths/ports), so we
+    # never invent a module the references can't supply and then get stuck on it.
+    anchor_mods = _anchor_module_list(design_dir)
+    anchor_block = ""
+    if anchor_mods:
+        listing = "\n".join(f"- `{nm}` (in {src})" for nm, src in anchor_mods[:30])
+        anchor_block = (
+            "\n\nANCHOR / REFERENCE DESIGN — its modules are ALREADY on disk under "
+            "`context/anchor/`. BASE THE MODULE MAP ON THESE BLOCKS: use the SAME decomposition "
+            "(same modules / same boundaries) and adapt ONLY widths, ports, and ops to the spec "
+            "above. Do NOT invent a different block structure the reference doesn't have — every "
+            "module you list MUST have a working counterpart here to copy + adapt:\n" + listing)
+        rec.caption(f"⚓ Basing the module map on the anchor's {len(anchor_mods)} block(s): "
+                    + ", ".join(nm for nm, _ in anchor_mods[:12]))
+    try:
+        doc = clean_llm_output(stream_to(
+            get_chat_model(temperature=0.3),
+            DESIGN_NOTES_PROMPT.format(
+                query=ctx["query"], constraints=constraints,
+                feedback=(f"USER STEERING: {feedback}" if feedback else ""))
+            + "\n\nFollow THIS plan checklist:\n" + "\n".join(f"- {p}" for p in points)
+            + anchor_block
+            + (f"\n\nResearched references (reuse these):\n{refs[:2000]}" if refs else "")
+            + "\n\nREMINDER: interfaces (port lists) ONLY — NO module bodies, NO internal wires, "
+              "NO repeated lines. Focus your words on the KNOWLEDGE (math, formats, hazards, refs).",
+            rec.placeholder())).strip()
+    except Exception:  # noqa: BLE001
+        doc = ""
+    doc = _collapse_repeats(doc)   # guard: a looping model can never write duplicate-signal spam
+    notes = design_dir / "design_notes.md"
+    if len(doc) > 500:
+        notes.write_text(doc)
+    elif not notes.exists():
+        notes.write_text("# Build plan\n\n" + "\n".join(f"- [ ] {p}" for p in points))
+    rec.success(f"📝 Grand plan + build contract → design_notes.md ({len(notes.read_text())} chars). "
+                "The planner does NOT write full RTL — each later agent sub-plans and does its job.")
+
+    # LOCK the generate sub-plan to the architect's module map NOW, so every later entry
+    # (generation, each completeness retry, a user 'continue') builds to the SAME file list —
+    # no second, conflicting decomposition. Re-running the planner (a deliberate Replan/Revise)
+    # re-derives and re-locks it; otherwise it stays fixed.
+    gen_plan = _build_plan_from_notes(notes.read_text())
+    if not gen_plan and len(anchor_mods) >= 2:     # notes unparseable → use the anchor's blocks
+        gen_plan = [f"{nm}.v — adapt from {src}" for nm, src in anchor_mods]
+    if not gen_plan:                               # no anchor either → reliable LLM fallback
+        gen_plan = _subplan(rec, ctx["query"], "generate", feedback)
+    if gen_plan:
+        _save_plan(design_dir, "generate", gen_plan)
+        files = _planned_rtl_files(gen_plan)[0]
+        rec.caption("🔒 Locked build file list (every later agent builds to THIS, consistently): "
+                    + ", ".join(files))
 
 
 def _deep_web(rec, ctx, feedback=""):
@@ -2215,24 +3396,50 @@ def _deep_web(rec, ctx, feedback=""):
     design_dir = Path(ctx["design_dir"])
     _state = {"calls": 0}
 
+    # PROBLEM-RESEARCH MODE: if the user steered "find about the problem / error / stuck", or a
+    # compile/sim error is on record, research the ERROR MESSAGES (not the design topic). This is
+    # the intent the search agent was missing — honoring the steer regardless of step sequence.
+    err = (ctx.get("simulation_output") or ctx.get("lint_output") or "").strip()
+    problem = bool(re.search(
+        r"\b(problem|error|stuck|fix|bug|issue|fail|failing|why|debug|wrong|crash|broken)\b",
+        feedback or "", re.I)) or bool(err)
+    err_terms = _error_search_terms(err) if problem else []
+    if problem and err:
+        (design_dir / "context").mkdir(parents=True, exist_ok=True)
+        (design_dir / "context" / "last_error.log").write_text(err)
+
     @_tool
     def web_research(query: str) -> str:
-        """Search GitHub for HDL repos + the web for papers, crawl them, and store the
-        real code/PDFs. Pass SHORT KEYWORDS only (comma-separated), e.g.
-        'riscv, picorv, alu, multiplier' — NOT a sentence. Call this ONCE; you cannot
-        improve results by calling it again."""
+        """Search GitHub for HDL repos + the web for papers for THIS design, crawl them, and
+        store the real code/PDFs. It searches the USER'S REQUEST AS-IS plus close variants —
+        you do NOT need to craft keywords. If you pass anything, pass the WHOLE design in
+        other words (an alternative NAME for the same chip), NOT a list of sub-blocks like
+        'alu, regfile, decoder' — decomposing the request pulls off-topic repos. Call this
+        ONCE; calling again will not improve results."""
         _state["calls"] += 1
         if _state["calls"] > 1:                       # hard stop the retry loop
             n = len(ctx.get("documents", []))
             return (f"STOP — you already searched and have {n} reference(s). Do NOT call "
                     "web_research again; write the digest to context/research.md NOW from "
                     "what you have plus your own knowledge.")
-        # distill whatever the model passed (keywords OR a sentence) into good search terms
-        terms = [t.strip() for t in re.split(r"[,\n]", query) if t.strip()]
-        kws = _hdl_keywords(", ".join(terms) or ctx["query"], 5) or [ctx["query"]]
-        main, similar = kws[0], kws[1:5]
-        rec.caption("🔑 Search keywords: " + ", ".join(f"`{k}`" for k in kws))
-        urls = _web_search(main, similar=similar, n_github=10, n_other=12)
+        if problem and err_terms:
+            # research the ACTUAL compiler/sim errors — what the user asked for — not the design
+            main, similar = err_terms[0], err_terms[1:4]
+            rec.caption("🔑 Researching the PROBLEM: " + ", ".join(f"`{t}`" for t in err_terms[:4]))
+            urls = _web_search(main, similar=similar, n_github=4, n_other=16, suffix="verilog")
+        else:
+            # SEARCH THE PROMPT AS-IS + CLOSE VARIANTS. The primary query is the user's
+            # ORIGINAL prompt verbatim; 'similar' are WHOLE-DESIGN rephrasings (cpu↔processor,
+            # rv32i↔risc-v, …), NOT the model's chunked sub-blocks. Decomposing the request
+            # into 'alu, regfile, branch predictor, memory system' pulled scattered generic
+            # repos and hurt results — so the model's chunked `query` arg is IGNORED for the
+            # search; we broaden the WHOLE design instead.
+            main = ctx["query"]
+            similar = _design_variants(main, 3)
+            rec.caption(f"🔑 Primary search = your prompt: *{main[:120]}*"
+                        + ("\n\nsimilar: " + ", ".join(f"`{s}`" for s in similar)
+                           if similar else ""))
+            urls = _web_search(main, similar=similar, n_github=10, n_other=12)
         n_gh = sum("github.com" in u for u in urls)
         rec.write(f"🔎 Found **{len(urls)}** references — **{n_gh}** HDL GitHub repos (code) "
                   f"+ **{len(urls) - n_gh}** papers/web (knowledge); crawling…")
@@ -2240,25 +3447,51 @@ def _deep_web(rec, ctx, feedback=""):
         ctx.setdefault("documents", []).extend(docs)
         _download_references(urls, design_dir, rec)   # real PDFs + code → knowledge store
         _store_web_docs(docs, ctx)
+        # ANCHOR + LINKS: clone the 1-2 best-match repos in full (copy+adapt), save the rest as
+        # links in context/sources.md (retrieve on demand). NOT problem-mode (errors don't anchor).
+        if not problem:
+            info = _build_anchor_and_links(urls, design_dir, ctx["query"], rec)
+            ctx["_anchors"] = list(info.get("anchors", {}).keys())
         if not docs:
             return ("No pages crawled. Do NOT search again — write the digest from your own "
                     "knowledge of this design now.")
         gh = [d for d in docs if "github.com" in d.metadata.get("source", "")]
         web = [d for d in docs if "github.com" not in d.metadata.get("source", "")]
         head = (f"Done — crawled {len(gh)} GitHub repo(s) + {len(web)} paper/web page(s). "
-                "Now WRITE context/research.md; do NOT call web_research again.\n\n")
+                "The closest repo(s) are CLONED to context/anchor/ (copy+adapt); other sources are "
+                "LINKS in context/sources.md. Now WRITE context/research.md; do NOT call web_research again.\n\n")
         return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:400]}"
                                    for d in (gh[:3] + web[:3])))[:4000]
 
-    goal = (
-        f"You are the hardware reference researcher for: {ctx['query']}.\n"
-        + (f"USER STEERING: {feedback}\n" if feedback else "")
-        + "Do NOT narrate or explain. In ONE step: call web_research ONCE with a few SHORT "
-          "KEYWORDS (comma-separated, e.g. 'riscv, picorv, alu, multiplier' — never a full "
-          "sentence). Then WRITE a concise reference digest to context/research.md (per "
-          "sub-block: a minimal interface + which GitHub repo implements it) and reply with it. "
-          "If a search returns little, do NOT search again — just write the digest."
-    )
+    if problem:
+        # the user wants the PROBLEM researched online — search the errors, write the FIX.
+        goal = (
+            "The current design has a PROBLEM and the user asked you to RESEARCH IT ONLINE.\n"
+            + (f"USER STEERING: {feedback}\n" if feedback else "")
+            + (f"The errors to research:\n" + "\n".join(f"- {t}" for t in err_terms) + "\n"
+               if err_terms else "")
+            + "FIRST read_file_disk('context/last_error.log') for the exact messages. Then call "
+              "web_research ONCE — it already searches THE ERROR (the compiler messages), so just "
+              "pass the error phrases. After it returns, WRITE context/research.md: for EACH error, "
+              "the CAUSE and the concrete FIX (with a tiny correct Verilog snippet). Reply with that. "
+              "Do NOT narrate, do NOT research the design topic — focus on solving the error."
+        )
+    else:
+        pts = ctx.get("_plan_points") or []
+        plan_note = ("The plan to research against (find a reference per sub-block):\n"
+                     + "\n".join(f"- {p}" for p in pts) + "\n") if pts else (
+                     "Identify the core sub-blocks of the spec above and find a reference HDL repo "
+                     "for each.\n")
+        goal = (
+            f"You are the hardware reference researcher for: {ctx['query']}.\n"
+            + (f"USER STEERING: {feedback}\n" if feedback else "")
+            + plan_note
+            + "Do NOT narrate. Call web_research ONCE with a few SHORT KEYWORDS from the plan "
+              "(comma-separated, e.g. 'riscv, picorv, alu, multiplier' — never a full sentence). Then "
+              "WRITE a concise reference digest to context/research.md (per planned sub-block: a minimal "
+              "interface + which GitHub repo implements it) and reply with it. If a search returns "
+              "little, do NOT search again."
+        )
     run_deep_agent(rec, design_dir, goal, extra_tools=[
                    web_research] + _step_tools(rec, design_dir), temperature=0.2)
     docs_now = ctx.get("documents", [])
@@ -2277,11 +3510,18 @@ def _deep_testbench(rec, ctx, feedback=""):
     top = ctx["top_module_name"]
     files = ctx.get("decomposed_files", {})
     header = next((f for f in files if f.endswith(".vh")), None)
+    # locked test-case plan (decided once, reused on every retry) — same list every entry
+    sub = _subplan(rec, ctx["query"], "testbench", feedback, design_dir=design_dir)
+    sub_note = ("TEST CASES to cover — this is the LOCKED plan; your write_todos MUST mirror it "
+                "exactly (same cases, same order):\n"
+                + "\n".join(f"- {p}" for p in sub) + "\n") if sub else ""
     goal = (
         f"Write a self-checking Verilog testbench for top module `{top}`. The DUT files are on disk "
         f"under rtl/. Read `rtl/{top}.v`" +
         (f" and `rtl/{header}`" if header else "")
         + " with read_file_disk to get the EXACT port list.\n"
+        + sub_note
+        + _SUBPLAN
         + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
         + (f'Include `\\`include "{header}"`.\n' if header else "")
         + f"STRICT: `module {top}_tb;` with EMPTY ports; declare clk + every DUT input as reg and "
@@ -2312,19 +3552,29 @@ def _deep_testbench(rec, ctx, feedback=""):
         rec.error("Deep agent produced no testbench — Revise or Replan to retry.")
 
 
+def _faulty_files(files: Dict[str, str], err: str, top: str, cap: int = 3) -> List[str]:
+    """EVERY design file the error log names, in order of appearance (capped). Fixing
+    one file per sim cycle could never converge when the errors span 6 files."""
+    order = sorted((err.find(f), f) for f in files if f in err and f.endswith(".v"))
+    out = [f for _, f in order if _ >= 0][:cap]
+    if not out:
+        fallback = f"{top}.v"
+        out = [fallback if fallback in files else next(iter(files))]
+    return out
+
+
 def _deep_fix_design(rec, ctx, feedback=""):
     """Module Corrector as an RLM deep agent: the error log is offloaded to disk; the
-    agent peeks at it + the broken module, may recall/search a fix, then rewrites the
-    module on disk. Prior failed attempts are named so it doesn't loop on the same code."""
+    agent peeks at it + EVERY broken module the log names, recalls past error→fix
+    lessons from the knowledge store FIRST, rewrites the modules on disk (each write is
+    compile-checked instantly), and a verified fix is saved back to the store so the
+    same mistake is never made twice."""
     rec.caption(
-        "🧠 RLM deep-agent corrector — peeks the error log on disk, may research, rewrites.")
+        "🧠 RLM deep-agent corrector — peeks the error log on disk, recalls past fixes, rewrites.")
     design_dir = Path(ctx["design_dir"])
     files = dict(ctx["decomposed_files"])
     err = ctx.get("simulation_output") or ctx.get("lint_output", "")
-    faulty = next((f for f in files if f in err),
-                  None) or f"{ctx['top_module_name']}.v"
-    faulty = faulty if faulty in files else next(iter(files))
-    stem = faulty[:-2] if faulty.endswith(".v") else faulty
+    faulty_list = _faulty_files(files, err, ctx.get("top_module_name", ""))
     attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
 
     cdir = design_dir / "context"
@@ -2332,46 +3582,77 @@ def _deep_fix_design(rec, ctx, feedback=""):
     (cdir / "last_error.log").write_text(err or "(no error text)")
 
     history = dict(ctx.get("fix_history", {}))
-    past = history.get(faulty, [])
-    rec.write(
-        "**Errors offloaded to `context/last_error.log` for the agent to peek:**")
+    rec.write(f"**Fixing {len(faulty_list)} file(s) named in the errors:** "
+              + ", ".join(f"`{f}`" for f in faulty_list))
     rec.code(err[:1800], language="text")
-    prior_note = ""
-    if past:
-        prior_note = ("Earlier fixes of this module FAILED — take a FUNDAMENTALLY different approach, "
-                      "do NOT reproduce this last attempt:\n```verilog\n" + past[-1][:1500] + "\n```\n")
-        rec.caption(
-            f"⛔ {len(past)} earlier fix(es) failed — the last one is shown to the agent to avoid looping.")
 
+    # ALWAYS recall past lessons for this error class first (pgvector) — not only when
+    # stuck. A lesson from a previous run usually solves the error on attempt 1.
+    err_sig = _error_query(err)
+    lesson = recall_fix(err_sig)
+    if lesson:
+        rec.caption(f"🧠 Recalled a stored lesson for: *{err_sig}*")
+        (cdir / "recalled_fix.md").write_text(lesson)
+
+    prior_notes = []
+    for f in faulty_list:
+        past = history.get(f, [])
+        if past:
+            prior_notes.append(
+                f"Earlier fix of `{f}` FAILED — do NOT reproduce it; take a different approach.")
+    has_research = (cdir / "research.md").exists()
+    # ERROR-HANDLING ORDER the user wants: (1) RESEARCH the error online (SearXNG/crawl4ai),
+    # (2) recall the DB lesson (pg/MinIO), (3) PLAN the fix, (4) apply it. Steps 1-2 are also
+    # pre-fetched below so they're already on disk, but the agent re-checks in this order.
     goal = (
-        f"A Verilog module FAILED to compile/simulate. The errors are in `context/last_error.log` and "
-        f"the broken module is `rtl/{faulty}`.\n"
-        f"1) read_file_disk('context/last_error.log') and read_file_disk('rtl/{faulty}').\n"
-        "2) In ONE line name the EXACT rule you violated, then REWRITE the module to fix the real cause "
-        "(not the symptom).\n"
-        "If the error is unfamiliar, call recall_memory or search_web ONCE for the correct pattern.\n"
-        + prior_note
-        + f"Keep the module name `{stem}` and a port list compatible with the rest of the design. WRITE "
-          f"the corrected module back to rtl/{faulty} with write_file_disk, then reply with it in one "
-          "```verilog block.\n"
+        # the USER's steer is the TOP priority — honor it literally, whatever it asks.
+        (f"USER INSTRUCTION (do exactly this): {feedback}\n" if feedback else "")
+        + "The design FAILED to compile/simulate. Errors: `context/last_error.log`. "
+        + f"Broken file(s): {', '.join('rtl/' + f for f in faulty_list)}.\n"
+        "FOLLOW THIS ORDER:\n"
+        "1) read_file_disk('context/last_error.log') — note EVERY error, not just the first.\n"
+        "2) RESEARCH the error ONLINE FIRST: call search_web ONCE with the exact compiler message "
+        "(SearXNG + crawl4ai). Skip only if it is a trivial syntax slip you already know.\n"
+        + ("3) RECALL the DB: read_file_disk('context/recalled_fix.md') — a stored lesson for THIS "
+           "error from pg/MinIO; also recall_knowledge if useful.\n" if lesson
+           else "3) RECALL the DB: call recall_memory/recall_knowledge for a stored fix.\n")
+        + ("4) read_file_disk('context/research.md') — prior web research on this error.\n" if has_research else "")
+        + "5) write_todos a SHORT plan (one line per broken file: the rule violated + the fix).\n"
+        + "6) For EACH broken file: read it, REWRITE it to fix the real cause, write_file_disk it back "
+          "to the SAME rtl/<name>. The write result shows a COMPILE CHECK — if it reports errors, fix "
+          "and write again until clean. Keep every module name + port list compatible.\n"
+        + ("\n".join(prior_notes) + "\n" if prior_notes else "")
         + VERILOG_PITFALLS
     )
     temp = min(0.2 + 0.18 * attempt, 0.85)
-    final = run_deep_agent(rec, design_dir, goal,
-                           extra_tools=_step_tools(rec, design_dir), temperature=temp)
+    run_deep_agent(rec, design_dir, goal,
+                   extra_tools=_step_tools(rec, design_dir), temperature=temp)
 
-    fixed = extract_code_block(final)
-    disk = design_dir / "rtl" / faulty
-    if fixed.strip() and "module" in fixed:    # prefer the inlined block; mirror it to disk
-        disk.write_text(fixed)
-    elif disk.exists():                        # else trust what the agent wrote to disk
-        fixed = disk.read_text()
-    else:
-        fixed = files[faulty]
-    files[faulty] = fixed
-    history[faulty] = past + [fixed]
-    rec.success(f"Corrected `{faulty}` (deep agent):")
-    rec.code(fixed, language="verilog")
+    # Trust the disk (every write was compile-checked); store a verified lesson.
+    from verilog_check import check_file
+    rtl_dir = design_dir / "rtl"
+    fixed_clean = []
+    for f in faulty_list:
+        disk = rtl_dir / f
+        if disk.exists():
+            new_code = disk.read_text()
+            history[f] = history.get(f, []) + [new_code]
+            files[f] = new_code
+            if not check_file(disk, rtl_dir):
+                fixed_clean.append(f)
+                rec.success(f"Corrected `{f}` — single-file compile now clean ✓")
+            else:
+                rec.warning(f"`{f}` still has single-file compile errors — next cycle continues.")
+            rec.expander_code(f"📄 {f} (after fix)", new_code, "verilog")
+    if fixed_clean and err_sig:
+        # durable lesson → knowledge DB (pg/MinIO), ALWAYS (stable-id dedup updates in
+        # place). Store the BROKEN→FIXED pair so future recall shows a concrete before/after.
+        f0 = fixed_clean[0]
+        broken0 = (history.get(f0, [None, None])[-2]
+                   if len(history.get(f0, [])) >= 2 else "")
+        remember_fix(err_sig, "", design=Path(ctx["design_dir"]).name,
+                     broken=broken0 or "", fixed=files[f0])
+        rec.caption("💾 Saved this error→fix lesson to the knowledge DB (pg/MinIO) for future runs.")
     ctx["decomposed_files"] = files
     ctx["fix_history"] = history
 
@@ -2394,11 +3675,15 @@ def _deep_fix_testbench(rec, ctx, feedback=""):
     rec.write("**Errors offloaded to `context/last_error.log`:**")
     rec.code(err[:1800], language="text")
 
+    has_research = (cdir / "research.md").exists()
     goal = (
-        f"The testbench `{name}` for module `{top}` FAILED — errors are in `context/last_error.log`.\n"
+        # the USER's steer is the TOP priority — honor it literally, whatever it asks.
+        (f"USER INSTRUCTION (do exactly this): {feedback}\n" if feedback else "")
+        + f"The testbench `{name}` for module `{top}` FAILED — errors are in `context/last_error.log`.\n"
         f"Read it and `rtl/{top}.v` with read_file_disk, then write a BRAND-NEW correct self-checking "
         "testbench FROM SCRATCH (do not reuse the broken structure).\n"
-        + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + ("read_file_disk('context/research.md') — the researcher already looked up THIS error "
+           "online; APPLY what it found.\n" if has_research else "")
         + f"STRICT: `module {name[:-2] if name.endswith('.v') else name};` EMPTY ports; clk + DUT inputs "
           "as reg, outputs as wire, each once; `always #5 clk=~clk;`; instantiate DUT by name; reset; "
           f'stimulus; check; `$dumpfile("design.vcd"); $dumpvars(0,{top}_tb);`; print EXACTLY '

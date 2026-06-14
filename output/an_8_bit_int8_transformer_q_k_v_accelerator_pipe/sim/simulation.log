@@ -1,4 +1,0 @@
-VCD info: dumpfile design.vcd opened for output.
-Result: FAILED
-Expected: q_out=10, k_out=20, v_out=30, result=600
-Got: q_out=10, k_out=20, v_out=30, result=6000
