@@ -44,9 +44,18 @@ _COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
 _MODULE_RE = re.compile(r"\bmodule\s+(\w+)\s*(#\s*\(.*?\))?\s*(\(.*?\))?\s*;",
                         re.DOTALL)
 _DEFINE_RE = re.compile(r"`define\s+(\w+)")
-# named instantiation:  mod_name [#(...)] inst_name ( .port(sig), ... );
+# named instantiation:  mod_name [#(.P(v), ...)] inst_name ( .port(sig), ... );
+# The param-override and port lists are matched with ONE level of nested parens balanced
+# (`(?:[^()]|\([^()]*\))*`), so SystemVerilog instantiations like
+#   fazyrv_core #(.CHUNKSIZE(CHUNKSIZE)) i_core (.clk_i(clk_i), ...);
+# are detected (the old `[^;]*?` stopped at the first inner `)` → 0 instantiations on SV → no
+# top found → the testbench tested a leaf module).
 _INST_RE = re.compile(
-    r"\b(\w+)\s*(?:#\s*\([^;]*?\))?\s+(\w+)\s*\(\s*(\.[^;]*?)\)\s*;", re.DOTALL)
+    r"\b(\w+)\s*"
+    r"(?:#\s*\((?:[^()]|\([^()]*\))*\)\s*)?"          # optional #(params), 1-level nesting
+    r"(\w+)\s*"                                        # instance name
+    r"\(\s*(\.(?:[^()]|\([^()]*\))*)\)\s*;",           # port list (.x(y), …), 1-level nesting
+    re.DOTALL)
 _NAMED_PORT_RE = re.compile(r"\.(\w+)\s*\(")
 
 
@@ -149,7 +158,8 @@ def parse_rtl(rtl_dir: Path) -> Dict:
     includes: Dict[str, List[str]] = {}   # file -> included names
     texts: Dict[str, str] = {}
 
-    for p in sorted(rtl_dir.glob("*.vh")) + sorted(rtl_dir.glob("*.v")):
+    for p in (sorted(rtl_dir.glob("*.vh")) + sorted(rtl_dir.glob("*.svh"))
+              + sorted(rtl_dir.glob("*.v")) + sorted(rtl_dir.glob("*.sv"))):
         raw = p.read_text(errors="replace")
         texts[p.name] = raw
         clean = _strip_comments(raw)
@@ -205,8 +215,9 @@ def closure_files(rtl_dir: Path, top: str) -> Tuple[List[str], List[str]]:
     info = parse_rtl(rtl_dir)
     defs, insts, includes = info["defs"], info["insts"], info["includes"]
     if top not in defs:
-        vs = sorted(Path(rtl_dir).glob("*.v"))
-        return [p.name for p in sorted(Path(rtl_dir).glob("*.vh")) + vs], []
+        vs = sorted(Path(rtl_dir).glob("*.v")) + sorted(Path(rtl_dir).glob("*.sv"))
+        hd = sorted(Path(rtl_dir).glob("*.vh")) + sorted(Path(rtl_dir).glob("*.svh"))
+        return [p.name for p in hd + vs], []
     needed_mods: Set[str] = set()
     stack = [top]
     while stack:
@@ -222,10 +233,11 @@ def closure_files(rtl_dir: Path, top: str) -> Tuple[List[str], List[str]]:
     for f in list(files):
         files.update(h for h in includes.get(f, []))
     files.update(p.name for p in Path(rtl_dir).glob("*.vh"))
-    orphans = [p.name for p in sorted(Path(rtl_dir).glob("*.v"))
+    files.update(p.name for p in Path(rtl_dir).glob("*.svh"))
+    orphans = [p.name for p in sorted(Path(rtl_dir).glob("*.v")) + sorted(Path(rtl_dir).glob("*.sv"))
                if p.name not in files]
-    ordered = ([f for f in sorted(files) if f.endswith(".vh")]
-               + [f for f in sorted(files) if f.endswith(".v")])
+    ordered = ([f for f in sorted(files) if f.endswith((".vh", ".svh"))]
+               + [f for f in sorted(files) if f.endswith((".v", ".sv"))])
     return [f for f in ordered if (Path(rtl_dir) / f).exists()], orphans
 
 
@@ -279,7 +291,7 @@ def check_file(path: Path, rtl_dir: Path, timeout: int = 30) -> str:
     path, rtl_dir = Path(path), Path(rtl_dir)
     if path.suffix not in (".v", ".sv"):
         return ""
-    cmd = ["iverilog", "-g2005-sv", "-t", "null", "-i", f"-I{rtl_dir}", str(path)]
+    cmd = ["iverilog", "-g2012", "-t", "null", "-i", f"-I{rtl_dir}", str(path)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
@@ -302,7 +314,7 @@ def full_report(rtl_dir: Path, top: str = "", only: Set[str] | None = None) -> s
     orphan files can't block the build."""
     rtl_dir = Path(rtl_dir)
     parts: List[str] = []
-    for p in sorted(rtl_dir.glob("*.v")):
+    for p in sorted(rtl_dir.glob("*.v")) + sorted(rtl_dir.glob("*.sv")):
         if only is not None and p.name not in only:
             continue
         err = check_file(p, rtl_dir)

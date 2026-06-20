@@ -62,8 +62,20 @@ export function BlockView({ block, runId }: { block: Block; runId: string | null
       return <div className="block warning">⚠️ {String(p[0] ?? "")}</div>;
     case "info":
       return <div className="block info">ℹ️ {String(p[0] ?? "")}</div>;
-    case "code":
-      return <pre className="code">{String(p[0] ?? "")}</pre>;
+    case "code": {
+      // Long code → collapsible dropdown so the transcript isn't lengthy; short stays inline.
+      const code = String(p[0] ?? "");
+      const lines = code.split("\n").length;
+      if (lines > 12) {
+        return (
+          <details className="exp block">
+            <summary>{`‹/› code · ${lines} lines`}</summary>
+            <pre className="code">{code}</pre>
+          </details>
+        );
+      }
+      return <pre className="code">{code}</pre>;
+    }
     case "expander_code":
       return (
         <details className="exp block">

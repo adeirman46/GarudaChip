@@ -1,6 +1,5 @@
-# GarudaChip SearXNG settings — minimal, tuned for programmatic use by the agents.
-# The KEY change vs. the stock image: `formats` includes `json`, so the Python client
-# (_searxng_search in app.py) can request &format=json. Stock SearXNG ships JSON OFF.
+# GarudaChip SearXNG settings — tuned for programmatic use by the agents.
+# JSON API is enabled (formats: json) so _searxng_search in app.py can use &format=json.
 use_default_settings: true
 
 general:
@@ -8,9 +7,8 @@ general:
   debug: false
 
 server:
-  # Override with the SEARXNG_SECRET env var in docker-compose; this is the fallback.
   secret_key: "garuda-searxng-secret-change-me"
-  limiter: false            # local single-user instance → no rate limiter / bot filter
+  limiter: false
   image_proxy: false
   method: "GET"
 
@@ -19,15 +17,44 @@ search:
   autocomplete: ""
   formats:
     - html
-    - json                  # <-- enables the JSON API the agents call
+    - json
 
-# Keep the engines that matter for HDL / hardware research fast and reliable. The
-# defaults already include google/bing/duckduckgo/github/arxiv; this just makes sure
-# the science + IT categories are available for papers and code.
+# Engine selection. On this host the general web-scraping engines (google/bing/brave/
+# startpage/duckduckgo/mojeek) are BLOCKED for the server IP — they return CAPTCHA /
+# "access denied" / SSL errors, so SearXNG had 0 results. They are DISABLED here so
+# SearXNG is fast and only runs engines that actually answer from this IP:
+#   • API/paper engines (science): arxiv, semantic scholar, crossref, pubmed  → WORK
+#   • github (it), wikipedia                                                  → WORK
+# General web + repo discovery is handled in app.py by the `ddgs` library fallback
+# (host-side, which DOES work), so the agent still finds repos like meiniKi/FazyRV.
 engines:
-  - name: github
-    disabled: false
+  # --- keep: these answer from this IP ---
   - name: arxiv
     disabled: false
-  - name: google scholar
+  - name: semantic scholar
     disabled: false
+  - name: crossref
+    disabled: false
+  - name: pubmed
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: github
+    disabled: false
+  # --- disable: blocked / CAPTCHA / SSL-broken for this server IP (just add latency) ---
+  - name: google
+    disabled: true
+  - name: google scholar
+    disabled: true
+  - name: bing
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: qwant
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: mojeek
+    disabled: true

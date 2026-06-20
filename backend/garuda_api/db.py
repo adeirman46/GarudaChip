@@ -132,8 +132,10 @@ def touch_chat(chat_id: str, title: str | None = None) -> None:
 
 
 def delete_chat(chat_id: str) -> None:
-    """Delete a chat AND everything it produced: its messages/runs (Postgres), the
-    design's knowledge rows + MinIO blobs (object storage), and its on-disk workspace."""
+    """Delete a chat AND most of what it produced: its messages/runs (Postgres), the
+    design's knowledge rows + MinIO blobs (object storage), and its on-disk workspace.
+    The learned error→fix LESSONS (kind='fix') are PRESERVED in the knowledge store —
+    they're cross-design lessons, not chat data, so deleting the chat must not lose them."""
     designs, dirs = _chat_designs(chat_id)
     if _engine:
         _q("DELETE FROM run WHERE chat_id=:id", id=chat_id)
@@ -174,7 +176,9 @@ def _cleanup_designs(designs: set, dirs: set) -> None:
             from memory_store import get_memory
             mem = get_memory()
             for d in designs:
-                mem.delete_where(design=d)        # pgvector rows + their MinIO blobs
+                # delete this design's rows + blobs, but KEEP kind='fix' lessons — those are
+                # durable, cross-design knowledge that must survive the chat being deleted.
+                mem.delete_where(design=d, exclude_kinds=["fix"])
         except Exception as exc:  # noqa: BLE001
             print(f"[db] knowledge cleanup skipped: {exc}")
     import shutil

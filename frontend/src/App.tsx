@@ -108,7 +108,9 @@ function fileWritten(itemFn: string, written: Set<string>): boolean {
   const a = stem(itemFn);
   for (const w of written) {
     const b = stem(w);
-    if (a === b || b.startsWith(a + "_") || a.startsWith(b + "_")) return true;
+    // exact, or the written file SPECIALIZES the planned name (plan "alu" → written "alu_8bit").
+    // NOT the reverse — a written "fazyrv_rf" must not green the plan item "fazyrv_rf_lut".
+    if (a === b || b.startsWith(a + "_")) return true;
   }
   return false;
 }

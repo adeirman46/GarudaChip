@@ -528,9 +528,12 @@ class MemoryStore:
                                {"id": item_id})
         return (res.rowcount or 0) > 0
 
-    def delete_where(self, *, kind: str | None = None, design: str | None = None) -> int:
+    def delete_where(self, *, kind: str | None = None, design: str | None = None,
+                     exclude_kinds: "list[str] | None" = None) -> int:
         """Bulk-delete every item matching kind and/or design (+ their blobs). Requires
-        at least one filter — refuses to wipe the whole store by accident."""
+        at least one filter — refuses to wipe the whole store by accident. `exclude_kinds`
+        PRESERVES those kinds (e.g. ['fix']) — used when deleting a chat's design so the
+        learned error→fix lessons stay in the durable store even after the chat is gone."""
         if not self._db_ready or not (kind or design):
             return 0
         from sqlalchemy import text as sqltext
@@ -541,6 +544,9 @@ class MemoryStore:
         if design:
             conds.append("design = :design")
             params["design"] = design
+        for i, k in enumerate(exclude_kinds or []):
+            conds.append(f"kind <> :xk{i}")
+            params[f"xk{i}"] = k
         where = " AND ".join(conds)
         with self._engine.begin() as conn:
             keys = [r[0] for r in conn.execute(sqltext(
