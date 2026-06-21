@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import zipfile
 import io
+import functools
 from pathlib import Path
 from typing import Dict, List
 
@@ -187,6 +188,34 @@ def find_verilator() -> str | None:
         return v
     cands = sorted(glob.glob("/nix/store/*verilator*/bin/verilator"))
     return cands[-1] if cands else None
+
+
+@functools.lru_cache(maxsize=32)
+def _verilator_known(vbin: str, candidates: tuple) -> tuple:
+    """The subset of warning NAMES this verilator build recognizes. Older builds (this machine
+    ships 4.038) lack `LATCH`/`WIDTHEXPAND`/… and a `--Werror-<unknown>` OR `-Wno-<unknown>`
+    aborts the WHOLE lint with '%Error: Unknown warning specified' (which looked like a lint
+    failure but is a flag-compat bug). Probe each name once with `-Wno-` and keep the supported
+    ones; the same set is valid for both `--Werror-<W>` and `-Wno-<W>`."""
+    ok = []
+    for w in candidates:
+        try:
+            p = subprocess.run([vbin, "--lint-only", f"-Wno-{w}"],
+                               capture_output=True, text=True, timeout=15)
+            if "Unknown warning specified" not in (p.stdout + p.stderr):
+                ok.append(w)
+        except Exception:  # noqa: BLE001
+            pass
+    return tuple(ok)
+
+
+# warnings the structural lint ESCALATES to errors (real RTL bugs) vs SUPPRESSES (cosmetic noise
+# that auto-generated RTL trips and LibreLane/Yosys handle anyway). A genuine error not in the
+# suppress list (e.g. ASSIGNIN = assigning to an input port) still fails the gate → corrector.
+_LINT_ESCALATE = ("MULTIDRIVEN", "LATCH", "UNOPTFLAT")
+_LINT_SUPPRESS = ("PINMISSING", "IMPLICIT", "WIDTH", "WIDTHEXPAND", "WIDTHTRUNC", "WIDTHCONCAT",
+                  "UNUSED", "UNUSEDSIGNAL", "UNDRIVEN", "UNDRIVENPORT", "CASEINCOMPLETE",
+                  "CASEOVERLAP", "DECLFILENAME", "EOFNEWLINE", "SYNCASYNCNET", "BLKSEQ", "UNUSEDPARAM")
 
 
 def slugify(text: str, n: int = 48) -> str:
@@ -806,7 +835,12 @@ VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY 
 12. NO BIT-SELECT ON AN EXPRESSION. `(a + b)[32]` / `(a*b)[7:0]` is a syntax error — you may
     only index a NET or VARIABLE, not a parenthesised expression. Assign it first:
     `wire [32:0] sum = a + b;` then use `sum[32]`. For a carry-out of an N-bit add do
-    `wire [N:0] sum = a + b; assign carry = sum[N];`."""
+    `wire [N:0] sum = a + b; assign carry = sum[N];`.
+13. NEVER ASSIGN TO AN `input` PORT (Verilator ASSIGNIN: "Assigning to input/const variable").
+    An input is DRIVEN BY THE PARENT — the module only READS it. If you see `assign abort_i = ...`
+    where `abort_i` is `input`, DELETE that assign (the parent supplies it). If the module is
+    actually supposed to PRODUCE that signal, change the port direction to `output` instead — but
+    only if nothing external drives it. Same rule for a `parameter`/`localparam` (const)."""
 
 
 # ---- Live workflow graph (highlights the agent currently working) ---------- #
@@ -2240,6 +2274,24 @@ def _ensure_top(ctx, rtl_dir) -> str:
     return top
 
 
+def _anchor_reference_tb(design_dir: Path) -> tuple[str, str]:
+    """The SOURCE design's OWN testbench (kept under context/anchor/) — the authoritative
+    reference for HOW the design is exercised and what 'correct' behavior is. Grounding the
+    generated testbench in it means the sim's PASS/FAIL (and the sootty waveform) reflects the
+    real design behavior from the repo, not values the local model invented. Returns
+    (reference_source, filename), or ('', '') if no reference testbench was kept."""
+    adir = design_dir / "context" / "anchor"
+    if not adir.is_dir():
+        return "", ""
+    cands: list[Path] = []
+    for pat in ("*tb*.sv", "*tb*.v", "*_test*.sv", "*_test*.v", "*sim*.sv", "*sim*.v"):
+        cands += [p for p in adir.rglob(pat) if p.is_file()]
+    if not cands:
+        return "", ""
+    p = max(cands, key=lambda x: x.stat().st_size)        # the most complete reference tb
+    return p.read_text(errors="replace"), p.name
+
+
 def agent_testbench(rec, ctx, feedback=""):
     # The testbench is a BOUNDED task: read the top module's ports, write ONE self-checking
     # tb. It is NOT run as a deep agent — the deep-agent path has no repetition breaker and
@@ -2247,13 +2299,33 @@ def agent_testbench(rec, ctx, feedback=""):
     # "testbench timed out" crashes). The one-shot path below uses stream_to, which DOES have
     # the repetition circuit-breaker, and needs a single call: far faster and more reliable.
     files = ctx["decomposed_files"]
-    top = _ensure_top(ctx, Path(ctx["design_dir"]) / "rtl")   # never test a leaf like `cmp`
-    top_code = (files.get(f"{top}.v") or files.get(f"{top}.sv")
+    rtl_dir = Path(ctx["design_dir"]) / "rtl"
+    top = _ensure_top(ctx, rtl_dir)                           # never test a leaf like `cmp`
+    # Match the testbench DIALECT to the DUT: a SystemVerilog DUT (`fsoc.sv`) gets a `.sv`
+    # testbench (`fsoc_tb.sv`), not a `.v` one — a `.v` tb instantiating an `.sv` DUT is the
+    # mixed-dialect mismatch the user hit ("fsoc is sv but fsoc_tb is v, sometimes it conflicts").
+    top_ext = "sv" if (rtl_dir / f"{top}.sv").exists() else "v"
+    tb_name = f"{top}_tb.{top_ext}"
+    dut_file = f"{top}.{top_ext}"
+    top_code = (files.get(f"{top}.sv") or files.get(f"{top}.v")
                 or next(iter(files.values()), ""))
     header = next((f for f in files if f.endswith((".vh", ".svh"))), None)
     inc = f'Include `\`include "{header}"`.' if header else ""
     if feedback:
         inc += f"\n- User instruction: {feedback}"
+    # GROUND the expected behavior in the SOURCE design's own testbench so the sim PASS/FAIL
+    # (and the sootty waveform) reflects the real design behavior from the repo — not values
+    # the local model invented. (User: "make sure the sootty sim result is correct by comparing
+    # to that repo/web knowledge".)
+    ref_src, ref_name = _anchor_reference_tb(Path(ctx["design_dir"]))
+    if ref_src:
+        rec.caption(f"📑 Grounding the testbench in the reference behavior from `{ref_name}`.")
+    reference = (
+        f"\nREFERENCE TESTBENCH from the source design (`{ref_name}`) — this is the AUTHORITATIVE\n"
+        "behavior. Mirror HOW it drives/clocks/resets the DUT and what it treats as a correct\n"
+        "result (its stimulus sequence, expected values, $display checks, finish condition) so\n"
+        "your PASS/FAIL matches the real design — do NOT invent unrelated expected values:\n"
+        f"```\n{ref_src[:3000]}\n```\n" if ref_src else "")
     llm = get_chat_model(temperature=0.2)
     prompt = ChatPromptTemplate.from_template(
         """Write a self-checking Verilog testbench for the top module.
@@ -2264,13 +2336,15 @@ STRICT RULES (follow exactly):
   Declare each signal EXACTLY ONCE (never both a port and a reg).
 - Clock: `reg clk; initial clk = 0; always #5 clk = ~clk;`
 - Instantiate the DUT connecting ports by name; apply reset; drive stimulus; check outputs.
+- Base the stimulus + EXPECTED values on the REFERENCE TESTBENCH below when one is given, so the
+  result reflects the real design behavior (not invented numbers).
 - Waveforms: `$dumpfile("design.vcd"); $dumpvars(0, {top}_tb);`
 - Print EXACTLY "Result: PASSED" on success or "Result: FAILED" on mismatch, then `$finish;`.
 - Output EXACTLY ONE module. Do NOT repeat the module.
 {inc}
-- Reply with ONLY JSON: {{"{top}_tb.v": "<full verilog source>"}}.
-
-DUT (`{top}.v`):
+- Reply with ONLY JSON: {{"{tb_name}": "<full verilog source>"}}.
+{reference}
+DUT (`{dut_file}`):
 ```verilog
 {code}
 ```"""
@@ -2279,12 +2353,16 @@ DUT (`{top}.v`):
     live = rec.placeholder()
     with st.spinner("Writing testbench…"):
         resp = stream_to(
-            prompt | llm, {"top": top, "code": top_code, "inc": inc}, live)
+            prompt | llm, {"top": top, "code": top_code, "inc": inc, "tb_name": tb_name,
+                           "dut_file": dut_file, "reference": reference}, live)
     try:
         tb = extract_json(resp)
         tb = {k: dedup_modules(v) for k, v in tb.items()}
     except Exception:  # noqa: BLE001
-        tb = {f"{top}_tb.v": extract_code_block(resp)}
+        tb = {tb_name: extract_code_block(resp)}
+    # force the tb filename to the DUT dialect (a model may have replied with `.v`)
+    if tb and next(iter(tb)) != tb_name:
+        tb = {tb_name: next(iter(tb.values()))}
     try:                                          # repair the `}`-block-close tic in the tb too
         from verilog_check import autofix_text
         tb = {k: autofix_text(v)[0] for k, v in tb.items()}
@@ -2347,6 +2425,15 @@ def agent_simulate(rec, ctx, feedback=""):
     top_tb = [f for f in all_tb if Path(f).stem.lower() == f"{top}_tb".lower()]
     want_tb = [str(tb_dir / k) for k in ctx.get("testbench_code", {}) if (tb_dir / k).exists()]
     tb_files = top_tb or want_tb or all_tb[:1]        # exactly one tb — the top's
+    # Be explicit about WHICH testbench drives the sim — it must be the top's own tb
+    # ({top}_tb), not some leftover/other tb — and flag it if it isn't.
+    if tb_files:
+        used = Path(tb_files[0]).name
+        if top_tb:
+            rec.caption(f"🧪 Simulating the top `{top}` with its testbench `{used}`.")
+        else:
+            rec.caption(f"⚠️ No `{top}_tb` found — falling back to `{used}`. Re-run the testbench "
+                        f"step so the sim drives the real top `{top}`, not another module.")
     needed: set = set()
     tops = {top} if top else set()
     for tbf in tb_files:                       # modules the testbench instantiates
@@ -2457,14 +2544,19 @@ def agent_lint(rec, ctx, feedback=""):
     # a separate arg ("-I", dir) verilator treats <dir> as a positional top-level
     # source and dies with "Cannot find file containing module: <dir>" — which looked
     # like a lint failure but was really an argument-parsing bug on the rtl/ path.
-    cmd = [vbin, "--lint-only", "-Wno-fatal",
-           "--Werror-MULTIDRIVEN", "--Werror-LATCH", "--Werror-UNOPTFLAT",
-           f"-I{rtl_dir}"]
+    # Escalate REAL structural bugs to errors; SUPPRESS cosmetic warnings (PINMISSING, IMPLICIT,
+    # WIDTH, …) that auto-generated RTL trips and synthesis handles anyway — so the gate fails
+    # ONLY on a genuine error (e.g. ASSIGNIN = assigning to an input port) and doesn't loop the
+    # corrector on harmless unconnected-pin noise. Pass only names THIS verilator knows.
+    werr_flags = [f"--Werror-{w}" for w in _verilator_known(vbin, _LINT_ESCALATE)]
+    no_flags = [f"-Wno-{w}" for w in _verilator_known(vbin, _LINT_SUPPRESS)]
+    cmd = [vbin, "--lint-only", "-Wno-fatal", *werr_flags, *no_flags, f"-I{rtl_dir}"]
     if top:
         cmd += ["--top-module", top]
     cmd += vfiles
-    rec.write("**Verilator structural lint (comb-loops / multidriven / latches):**")
-    rec.code("verilator --lint-only --Werror-MULTIDRIVEN --Werror-LATCH --Werror-UNOPTFLAT "
+    rec.write("**Verilator structural lint (real errors only — comb-loops / multidriven / "
+              "illegal assigns; cosmetic warnings suppressed):**")
+    rec.code("verilator --lint-only " + " ".join(werr_flags) + " "
              + " ".join(os.path.basename(f) for f in vfiles), language="bash")
     try:
         with st.spinner("Linting RTL…"):
@@ -2688,6 +2780,48 @@ Reply with ONLY JSON: {{"{name}": "<full verilog source>"}}."""
     ctx["fix_history"] = history
 
 
+def _show_librelane_steps(rec, chip_dir: Path):
+    """Show EVERY LibreLane step that ran (the `NN-stepname/` folders in the latest run dir),
+    each with its runtime and a peek at its main report/output + the artifacts it produced —
+    so the user can inspect each step's output, whether the flow passed OR stopped early.
+    Returns the run dir Path."""
+    runs = sorted(glob.glob(str(chip_dir / "runs" / "RUN_*")))
+    if not runs:
+        return None
+    run = Path(runs[-1])
+    steps = sorted([d for d in run.iterdir() if d.is_dir() and re.match(r"\d+-", d.name)])
+    if not steps:
+        return run
+    # At-a-glance TABLE of EVERY step (name · runtime · status · #outputs) — like a notebook
+    # display() summary — then a collapsible per step below for the full output.
+    _art_suf = (".v", ".def", ".gds", ".sdc", ".spef", ".nl", ".json", ".odb", ".lef", ".spice")
+    nums, runtimes, status, nouts = [], [], [], []
+    for d in steps:
+        nums.append(d.name)
+        ran = (d / "runtime.txt").exists()
+        runtimes.append((d / "runtime.txt").read_text(errors="replace").strip() if ran else "—")
+        status.append("✓ ran" if ran else "✗ stopped here")
+        nouts.append(str(len([p for p in d.iterdir() if p.is_file() and p.suffix in _art_suf])))
+    rec.write(f"**LibreLane flow — {len(steps)} steps:**")
+    rec.table({"Step": nums, "Runtime": runtimes, "Status": status, "Outputs": nouts})
+    rec.write("Expand any step below to see its report + output files:")
+    for d in steps:
+        rt = ""
+        if (d / "runtime.txt").exists():
+            rt = " · " + (d / "runtime.txt").read_text(errors="replace").strip()[:40]
+        rep = d / "reports"
+        cand = (sorted(rep.glob("*.rpt")) + sorted(rep.glob("*.log")) if rep.is_dir() else []) \
+            + sorted(d.glob("*.log")) + sorted(d.glob("*.rpt"))
+        body = "\n\n".join(f"# {f.name}\n{f.read_text(errors='replace').strip()[:1500]}"
+                           for f in cand[:2] if f.read_text(errors="replace").strip())
+        arts = [p.name for p in sorted(d.iterdir())
+                if p.is_file() and p.suffix in (".v", ".def", ".gds", ".sdc", ".spef", ".nl", ".json")]
+        body = (body or "(no report file for this step)") + \
+               ("\n\noutputs: " + ", ".join(arts[:12]) if arts else "")
+        rec.expander_code(f"🔹 {d.name}{rt}", body[:4000], "text")
+    return run
+
+
 def agent_harden(rec, ctx, feedback=""):
     design_dir = Path(ctx["design_dir"])
     design_name = _ensure_top(ctx, design_dir / "rtl") or slugify(ctx["query"])  # harden the real top
@@ -2763,9 +2897,20 @@ def agent_harden(rec, ctx, feedback=""):
             "LINTER_ERROR_ON_MULTIDRIVEN": False,
             "ERROR_ON_LINTER_ERRORS": False,
             "ERROR_ON_LINTER_WARNINGS": False,
+            # Yosys post-synthesis checks (undriven/multidriven/etc.) ALSO quit the flow by
+            # default ("101 Yosys check errors found → LibreLane will now quit") before any
+            # GDS exists. Auto-generated RTL trips these routinely; make them informative,
+            # not fatal, so the flow reaches GDSII (the findings still appear in the log).
+            "ERROR_ON_SYNTH_CHECKS": False,
+            "ERROR_ON_UNMAPPED_CELLS": False,
+            # The FINAL checker (49-checker-disconnectedpins) quits with rc=2 on the design's
+            # unconnected pins (the same PINMISSING the parent doesn't wire) AFTER routing
+            # finished — so the layout exists but no GDS is streamed. Make it informative, not
+            # fatal, so the GDS is produced; the disconnected-pin report stays in the step log.
+            "ERROR_ON_DISCONNECTED_PINS": False,
             "LINTER_DISABLE_WARNINGS": [
                 "UNOPTFLAT", "WIDTH", "WIDTHEXPAND", "WIDTHTRUNC", "WIDTHCONCAT",
-                "CASEINCOMPLETE", "CASEOVERLAP", "UNUSEDSIGNAL", "UNDRIVEN",
+                "CASEINCOMPLETE", "CASEOVERLAP", "UNUSEDSIGNAL", "UNDRIVEN", "PINMISSING",
                 "IMPLICIT", "BLKSEQ", "SYNCASYNCNET", "DECLFILENAME", "EOFNEWLINE",
             ],
         }),
@@ -2789,13 +2934,16 @@ def agent_harden(rec, ctx, feedback=""):
         proc.wait()
     (chip_dir / "librelane.log").write_text("\n".join(lines))
     rec.code("\n".join(lines[-30:]) or "(no output)", language="text")
-    # FULL per-step log (synthesis → floorplan → placement → CTS → routing → DRC/LVS) in a
-    # collapsible block, so each LibreLane step's output is inspectable without scrolling the run.
+    # PER-STEP output: one collapsible per LibreLane step (synth → floorplan → placement → CTS →
+    # routing → DRC/LVS → GDS) with its runtime, main report, and the artifacts it produced — so
+    # EVERY step's output is inspectable, whether the flow finished or stopped early.
+    _show_librelane_steps(rec, chip_dir)
+    # also the consolidated flow log (filtered to step boundaries + errors) as one block
     step_lines = [ln for ln in lines if re.search(r"\bStep\b|Starting|Finished|^\s*\d+\s|Yosys|"
                   r"OpenROAD|Floorplan|Placement|Detailed Routing|Global Routing|CTS|Magic|KLayout|"
                   r"DRC|LVS|Antenna|error|warning", ln, re.I)]
     if step_lines:
-        rec.expander_code("🏭 LibreLane steps — full flow log", "\n".join(step_lines)[:16000], "text")
+        rec.expander_code("🏭 LibreLane — consolidated flow log", "\n".join(step_lines)[:16000], "text")
 
     gds = sorted(glob.glob(str(chip_dir / "runs" / "**" / "final" / "**" / "*.gds"), recursive=True)) or \
         sorted(glob.glob(str(chip_dir / "runs" / "**" / "*.gds"), recursive=True))
@@ -2813,45 +2961,78 @@ def agent_harden(rec, ctx, feedback=""):
             (design_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
         rec.success(
             f"🎉 GDSII generated → `output/{design_dir.name}/{final_gds.name}`")
-        # show the chip LAYOUT image(s) LibreLane/KLayout rendered (the "see the chip" view)
-        pngs = sorted(glob.glob(str(chip_dir / "runs" / "**" / "*.png"), recursive=True))
-        pref = [p for p in pngs if re.search(r"final|signoff|route|gds|layout|render|klayout",
-                                             p, re.I)]
-        shown = 0
-        for img in (pref or pngs):
-            try:
-                dst = design_dir / ("layout_" + re.sub(r"[^\w.\-]", "_", Path(img).name))
-                shutil.copy(img, dst)
-                rec.image(str(dst), f"🔬 Chip layout — {Path(img).stem}")
-                shown += 1
-                if shown >= 2:
-                    break
-            except Exception:  # noqa: BLE001
-                pass
-        if not shown:
-            rec.caption("ℹ️ No layout render was produced by LibreLane (enable a render step to "
-                        "get a PNG); the GDS is in the artifacts.")
     else:
         rec.error(
-            f"LibreLane finished (rc={proc.returncode}) but no GDS was produced — see log above.")
+            f"LibreLane finished (rc={proc.returncode}) but no GDS was produced — see log above. "
+            "Showing the layout render + metrics produced so far:")
+
+    # Show the chip LAYOUT image(s) LibreLane/KLayout rendered — in BOTH paths: routing produces a
+    # render PNG even when a LATE checker aborts before the GDS is streamed, so the user can still
+    # SEE the placed-and-routed chip.
+    pngs = sorted(glob.glob(str(chip_dir / "runs" / "**" / "*.png"), recursive=True))
+    pref = [p for p in pngs if re.search(r"final|signoff|gds|layout", p, re.I)] \
+        or [p for p in pngs if re.search(r"route|render|klayout", p, re.I)] or pngs
+    shown = 0
+    for img in pref[:1]:                          # ONE layout image — the final/signoff render
+        try:
+            dst = design_dir / ("layout_" + re.sub(r"[^\w.\-]", "_", Path(img).name))
+            shutil.copy(img, dst)
+            rec.image(str(dst), f"🔬 Chip layout — {Path(img).stem}")
+            shown += 1
+        except Exception:  # noqa: BLE001
+            pass
+    if not shown:
+        rec.caption("ℹ️ No layout render PNG was produced by LibreLane; the GDS (if any) is in the artifacts.")
 
     if metrics:
-        keys = {
-            "design__die__area": "Die area (µm²)",
-            "design__instance__count__stdcell": "Std cells",
-            "timing__setup__ws": "Setup worst-slack (ns)",
-            "timing__hold__ws": "Hold worst-slack (ns)",
-            "route__wirelength": "Route wirelength",
-            "power__total": "Total power (W)",
-            "magic__drc__count": "DRC violations",
-            "design__lvs__errors__count": "LVS errors",
-        }
-        rows = [(label, metrics[k])
-                for k, label in keys.items() if k in metrics]
+        def _num(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        def _slack(k):
+            f = _num(metrics.get(k))
+            if f is None:
+                return None
+            # OpenROAD reports ~1e30 for "no timing path" (this design has ~no registers) —
+            # show that plainly instead of a 40-digit garbage number.
+            return "n/a — no timing paths" if abs(f) > 1e15 else f"{f:.4g}"
+
+        # die size W × H from the bbox "x0 y0 x1 y1"
+        dims = None
+        bb = metrics.get("design__die__bbox", "")
+        if isinstance(bb, str) and len(bb.split()) == 4:
+            x0, y0, x1, y1 = (_num(t) for t in bb.split())
+            if None not in (x0, y0, x1, y1):
+                dims = f"{x1 - x0:.2f} × {y1 - y0:.2f} µm"
+        disc = metrics.get("design__disconnected_pin__count")
+        # setup/hold WNS/TNS are the MEANINGFUL slack values (0 = met); __ws is the sentinel.
+        s_wns, s_tns = _slack("timing__setup__wns"), _slack("timing__setup__tns")
+        h_wns, h_tns = _slack("timing__hold__wns"), _slack("timing__hold__tns")
+        spec = [
+            ("Die area (µm²)",          metrics.get("design__die__area")),
+            ("Die size (W × H)",        dims),
+            ("Core area (µm²)",         metrics.get("design__core__area")),
+            ("Std cells",               metrics.get("design__instance__count__stdcell")),
+            ("Setup slack — WNS / TNS (ns)", f"{s_wns} / {s_tns}" if s_wns is not None else None),
+            ("Hold slack — WNS / TNS (ns)",  f"{h_wns} / {h_tns}" if h_wns is not None else None),
+            ("Route wirelength (µm)",   metrics.get("route__wirelength")),
+            ("Total power (W)",         metrics.get("power__total")),
+            ("DRC violations",          metrics.get("magic__drc_error__count",
+                                                    metrics.get("route__drc_errors"))),
+            ("LVS errors",              metrics.get("design__lvs_error__count")),
+            ("Antenna violations",      metrics.get("antenna__violating__nets")),
+            ("Disconnected pins",       disc),
+        ]
+        rows = [(lbl, str(v)) for lbl, v in spec if v is not None]
         if rows:
             rec.write("**Signoff metrics:**")
-            rec.table({"Metric": [r[0] for r in rows],
-                      "Value": [str(r[1]) for r in rows]})
+            rec.table({"Metric": [r[0] for r in rows], "Value": [r[1] for r in rows]})
+            if disc is not None and (_num(disc) or 0) > 0:
+                rec.caption(f"⚠️ {disc} disconnected pins — the core's unwired outputs (the PINMISSING "
+                            "findings). The GDS streams out, but those nets are FLOATING until they are "
+                            "connected — so it's a layout, not yet a functional chip.")
         rec.json(metrics)
     ctx["harden"] = {"gds": str(
         final_gds) if final_gds else None, "metrics": metrics, "rc": proc.returncode}
@@ -3005,11 +3186,11 @@ def advance(run, node):
         elif "lint" not in q:                         # sim passed → structural lint gate
             q.insert(0, "lint")
     elif node == "lint":
-        if ctx.get("lint_output"):                    # lint found issues
-            # If the design COMPILES, the lint findings are non-fatal warnings — DON'T risk the
-            # corrector breaking a synthesizable design over them; harden directly (LibreLane's
-            # own lint is configured non-fatal). Only fix-loop a design that won't compile.
-            if not ctx.get("_design_compiles") and ctx.get("lint_count", 0) < MAX_LINT_RETRIES:
+        if ctx.get("lint_output"):                    # a REAL lint error (cosmetic warnings are
+            # suppressed in agent_lint, so a non-empty lint_output is a genuine structural error
+            # — e.g. ASSIGNIN — that Yosys would ALSO reject. FIX it before hardening (the user:
+            # "correct lint error first before continue to harden"), even if iverilog compiled it.
+            if ctx.get("lint_count", 0) < MAX_LINT_RETRIES:
                 q[:0] = ["fix_design", "write", "simulate", "lint"]
             elif ctx.get("run_harden"):
                 q.append("harden")
@@ -3528,7 +3709,56 @@ def _step_tools(rec, base_dir=None):
             return f"(could not fetch {url}: {e})"
         return f"(nothing usable at {url})"
 
-    tools = [search_web, recall_memory, show_image, show_waveform, fetch_reference]
+    @tool
+    def delete_file(path: str) -> str:
+        """DELETE a file from the design — a stale duplicate module, an obsolete testbench, a
+        leftover `.v` you replaced with a `.sv`, etc. Pass a path relative to the design dir
+        ('rtl/old_alu.v', 'tb/cmp_tb.v'). Use this to REMOVE code that should no longer be part
+        of the build (a finding that says a module is duplicated/unused → delete one)."""
+        try:
+            p = _resolve(path)
+        except ValueError as e:
+            return f"(refused: {e})"
+        if not p.exists():
+            return f"(not found: {path})"
+        if p.is_dir():
+            return f"(refused: {path} is a directory)"
+        p.unlink()
+        rec.markdown(f"🗑️ **`delete_file`** · removed `{path}`")
+        return f"deleted {path}"
+
+    @tool
+    def rename_file(src: str, dst: str) -> str:
+        """RENAME or MOVE a design file — INCLUDING CHANGING ITS FORMAT/extension (.v ↔ .sv,
+        .vh ↔ .svh). Use this when a file's extension conflicts with the rest of the build:
+        e.g. the DUT is SystemVerilog (`rtl/fsoc.sv`) but the testbench is plain Verilog
+        (`tb/fsoc_tb.v`) and that mismatch breaks compilation — rename it to `tb/fsoc_tb.sv`
+        so the whole build is one consistent dialect. Both paths are relative to the design
+        dir; the file CONTENT is unchanged, only its name/extension. The renamed RTL/TB is
+        compile-checked and the result returned."""
+        try:
+            s, d = _resolve(src), _resolve(dst)
+        except ValueError as e:
+            return f"(refused: {e})"
+        if not s.exists():
+            return f"(not found: {src})"
+        d.parent.mkdir(parents=True, exist_ok=True)
+        if d.exists():
+            d.unlink()
+        s.rename(d)
+        rec.markdown(f"🔤 **`rename_file`** · `{src}` → `{dst}`")
+        if d.suffix in (".v", ".sv") and base:
+            try:
+                from verilog_check import check_file
+                err = check_file(d, base / "rtl")
+                if err:
+                    return f"renamed {src} → {dst}\nCOMPILE CHECK (fix if needed):\n{err[:700]}"
+            except Exception:  # noqa: BLE001
+                pass
+        return f"renamed {src} → {dst} (clean)"
+
+    tools = [search_web, recall_memory, show_image, show_waveform, fetch_reference,
+             delete_file, rename_file]
 
     # --- durable knowledge store (pgvector + MinIO): recall / fetch / remember ---
     mem = get_memory()
@@ -4235,6 +4465,10 @@ def _deep_fix_design(rec, ctx, feedback=""):
         + "6) For EACH broken file: read it, REWRITE it to fix the real cause, write_file_disk it back "
           "to the SAME rtl/<name>. The write result shows a COMPILE CHECK — if it reports errors, fix "
           "and write again until clean. Keep every module name + port list compatible.\n"
+        + "   You may also: write_file_disk a NEW rtl/<name> for a module the design references but that "
+          "no file defines (ADD it); delete_file a duplicate/obsolete module; and rename_file to fix a "
+          "dialect clash — if a `.v` file uses SystemVerilog (or a `.v` testbench drives an `.sv` DUT), "
+          "rename it to `.sv` so the whole build is one consistent dialect.\n"
         + xmod_block
         + ("\n".join(prior_notes) + "\n" if prior_notes else "")
         + VERILOG_PITFALLS

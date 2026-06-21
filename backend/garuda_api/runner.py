@@ -567,9 +567,19 @@ def _summary(run_obj) -> str:
     top = ctx.get("top_module_name") or "design"
     if ctx.get("simulation_output"):
         return f"⚠️ `{top}` — RTL could not be fully verified ({ctx.get('error_count', 0)} attempts). Files saved under output/."
-    gds = ctx.get("harden", {}).get("gds") if isinstance(ctx.get("harden"), dict) else None
-    return (f"✅ `{top}` — RTL verified (simulation passed)."
-            + (f" GDSII generated." if gds else ""))
+    harden = ctx.get("harden") if isinstance(ctx.get("harden"), dict) else {}
+    gds = harden.get("gds")
+    sim_note = ("RTL compiles (functional sim unverified)" if ctx.get("_sim_unverified")
+                else "RTL verified (simulation passed)")
+    if gds:
+        return f"✅ `{top}` — {sim_note}; GDSII generated."
+    # Harden was REQUESTED but produced no GDS — don't show a green ✅: the layout doesn't exist.
+    if ctx.get("run_harden") or harden:
+        rc = harden.get("rc")
+        return (f"⚠️ `{top}` — {sim_note}, but hardening did NOT produce a GDS"
+                + (f" (LibreLane rc={rc})" if rc is not None else "")
+                + " — see the harden step. No layout was generated.")
+    return f"✅ `{top}` — {sim_note}. (Hardening was not requested.)"
 
 
 # --- live knowledge ingest (only newly-written files) -----------------------
