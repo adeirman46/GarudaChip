@@ -17,6 +17,22 @@ export const api = {
   async deleteChat(id: string): Promise<void> {
     await fetch(`/api/chats/${id}`, { method: "DELETE" });
   },
+  async deleteMessage(chatId: string, messageId: string): Promise<void> {
+    await fetch(`/api/chats/${chatId}/messages/${messageId}`, { method: "DELETE" });
+  },
+  async editMessage(chatId: string, messageId: string, content: string): Promise<void> {
+    await fetch(`/api/chats/${chatId}/messages/${messageId}`, {
+      method: "PATCH", headers: J, body: JSON.stringify({ content }),
+    });
+  },
+  /** Edit a message AND re-run it (the new run replaces the old). */
+  async rerunMessage(
+    chatId: string, messageId: string, content: string, opts: object
+  ): Promise<{ run: { id: string } }> {
+    return (await fetch(`/api/chats/${chatId}/messages/${messageId}/rerun`, {
+      method: "POST", headers: J, body: JSON.stringify({ content, opts }),
+    })).json();
+  },
   async knowledge(): Promise<KnowledgeStats> {
     return (await fetch("/api/knowledge/stats")).json();
   },

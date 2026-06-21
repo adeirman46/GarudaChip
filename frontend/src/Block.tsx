@@ -63,8 +63,23 @@ export function BlockView({ block, runId }: { block: Block; runId: string | null
     case "info":
       return <div className="block info">ℹ️ {String(p[0] ?? "")}</div>;
     case "code": {
-      // Long code → collapsible dropdown so the transcript isn't lengthy; short stays inline.
       const code = String(p[0] ?? "");
+      // LIVE streaming status from stream_to (💭 thinking / ⏳ generating / "… N tokens") →
+      // an ANIMATED indicator (bouncing dots + ticking token count + the live text scrolling).
+      if (/💭\s*thinking|⏳\s*generating|\(\d+\s*tokens\)/.test(code)) {
+        const tok = code.match(/(\d+)\s*tokens/);
+        const body = code.replace(/^[⏳💭].*$/gmu, "").replace(/^———$/gmu, "").trim();
+        return (
+          <div className="block streaming">
+            <div className="streamhead">
+              <span className="streamdots"><i /><i /><i /></span>
+              Thinking{tok ? <> · <span className="tokcount">{tok[1]}</span> tokens</> : "…"}
+            </div>
+            {body && <pre className="code streamcode">{body.slice(-2400)}</pre>}
+          </div>
+        );
+      }
+      // Long code → collapsible dropdown so the transcript isn't lengthy; short stays inline.
       const lines = code.split("\n").length;
       if (lines > 12) {
         return (
@@ -91,6 +106,35 @@ export function BlockView({ block, runId }: { block: Block; runId: string | null
           {p[1] ? <div className="caption">{String(p[1])}</div> : null}
           <img src={src} alt={String(p[1] ?? "image")} />
         </div>
+      );
+    }
+    case "table": {
+      // payload[0] = { ColName: [values...] } → render an HTML table (was [object Object]).
+      const data = (p[0] ?? {}) as Record<string, unknown[]>;
+      const cols = Object.keys(data);
+      const nrows = cols.length ? Math.max(...cols.map((c) => (data[c] || []).length)) : 0;
+      return (
+        <div className="block">
+          <table className="metricstable">
+            <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>
+              {Array.from({ length: nrows }).map((_, r) => (
+                <tr key={r}>{cols.map((c) => <td key={c}>{String((data[c] || [])[r] ?? "")}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    case "json": {
+      // payload[0] = an object → pretty-print in a collapsible block (was [object Object]).
+      let text = "";
+      try { text = JSON.stringify(p[0] ?? {}, null, 2); } catch { text = String(p[0] ?? ""); }
+      return (
+        <details className="exp block">
+          <summary>{`{} all metrics · ${text.split("\n").length} lines`}</summary>
+          <pre className="code">{text}</pre>
+        </details>
       );
     }
     case "header":

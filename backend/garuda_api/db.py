@@ -216,6 +216,64 @@ def get_messages(chat_id: str) -> list[dict]:
     return [_iso(m) for m in _mem["message"] if m["chat_id"] == chat_id]
 
 
+def update_message(message_id: str, content: str) -> None:
+    """Edit a message's text in place (e.g. fix a typo'd prompt)."""
+    if _engine:
+        _q("UPDATE message SET content=:c WHERE id=:id", id=message_id, c=content or "")
+    else:
+        for m in _mem["message"]:
+            if m["id"] == message_id:
+                m["content"] = content or ""
+
+
+def delete_runs_for_message(message_id: str) -> None:
+    """Delete a message's run ROWS only (no design cleanup) — used when re-running an edited
+    message so the new run replaces the old, while the design folder is kept for the re-run."""
+    if _engine:
+        _q("DELETE FROM run WHERE message_id=:id", id=message_id)
+    else:
+        _mem["run"] = {k: v for k, v in _mem["run"].items() if v.get("message_id") != message_id}
+
+
+def delete_message(message_id: str) -> None:
+    """Delete ONE message and its run(s). A run's design_dir is cleaned up ONLY if no OTHER run
+    still references it (so deleting a continuation message never wipes the original design a prior
+    message still owns). kind='fix' knowledge lessons are preserved (see _cleanup_designs)."""
+    if _engine:
+        gone = _q("SELECT DISTINCT design_dir FROM run WHERE message_id=:id",
+                  id=message_id).mappings().all()
+        gone_dirs = {r["design_dir"] for r in gone if r.get("design_dir")}
+        _q("DELETE FROM run WHERE message_id=:id", id=message_id)
+        _q("DELETE FROM message WHERE id=:id", id=message_id)
+        still = {r[0] for r in _q("SELECT DISTINCT design_dir FROM run WHERE design_dir IS NOT NULL")
+                 .all()}
+        orphan = gone_dirs - still
+    else:
+        gone_dirs = {v["design_dir"] for v in _mem["run"].values()
+                     if v.get("message_id") == message_id and v.get("design_dir")}
+        _mem["run"] = {k: v for k, v in _mem["run"].items() if v.get("message_id") != message_id}
+        _mem["message"] = [m for m in _mem["message"] if m["id"] != message_id]
+        still = {v.get("design_dir") for v in _mem["run"].values() if v.get("design_dir")}
+        orphan = gone_dirs - still
+    if orphan:
+        from pathlib import Path
+        _cleanup_designs({Path(d).name for d in orphan}, orphan)
+
+
+def clear_control_messages(chat_id: str) -> None:
+    """Drop stale run-control prompts (the '⏸ Paused…' / '⚠️ A step crashed…' assistant
+    bubbles) from a chat. Called when a NEW run starts: the user has clearly acted on the
+    prompt, so the old 'Say continue' bubble is obsolete and must not linger in the thread."""
+    if _engine:
+        _q("DELETE FROM message WHERE chat_id=:id AND role='assistant' "
+           "AND (content LIKE '⏸ Paused%' OR content LIKE '⚠️ A step crashed%')", id=chat_id)
+    else:
+        _mem["message"] = [
+            m for m in _mem["message"]
+            if not (m["chat_id"] == chat_id and m["role"] == "assistant"
+                    and m["content"].startswith(("⏸ Paused", "⚠️ A step crashed")))]
+
+
 # --- runs (persist live ctx + transcript) -----------------------------------
 def create_run(chat_id: str, message_id: str, query: str, design_dir: str) -> dict:
     rid = new_id("run")
@@ -243,10 +301,10 @@ def update_run(run_id: str, *, status=None, ctx=None, transcript=None,
             params["s"] = status
         if ctx is not None:
             sets.append("ctx=CAST(:c AS JSONB)")
-            params["c"] = json.dumps(_jsonable(ctx))
+            params["c"] = json.dumps(_jsonable(ctx), allow_nan=False)
         if transcript is not None:
             sets.append("transcript=CAST(:tr AS JSONB)")
-            params["tr"] = json.dumps(_jsonable(transcript))
+            params["tr"] = json.dumps(_jsonable(transcript), allow_nan=False)
         if queue is not None:
             sets.append("queue=CAST(:q AS JSONB)")
             params["q"] = json.dumps(list(queue))
@@ -296,6 +354,18 @@ def latest_run_for_chat(chat_id: str) -> dict | None:
     return _iso(sorted(runs, key=lambda r: r["created_at"])[-1]) if runs else None
 
 
+def designs_for_chat(chat_id: str) -> list[dict]:
+    """Newest-first runs of a chat that have a design_dir, with their query + FULL saved ctx — so a
+    follow-up can pick the most recent BUILT design and resume its exact state (not the latest run,
+    which might be an empty re-plan)."""
+    if _engine:
+        rows = _q("SELECT id, query, design_dir, ctx FROM run WHERE chat_id=:id "
+                  "AND design_dir IS NOT NULL ORDER BY created_at DESC", id=chat_id).mappings().all()
+        return [dict(r) for r in rows]
+    return [dict(r) for r in sorted((x for x in _mem["run"].values() if x["chat_id"] == chat_id),
+                                    key=lambda r: r["created_at"], reverse=True)]
+
+
 # --- helpers ----------------------------------------------------------------
 def _iso(row: dict) -> dict:
     out = dict(row)
@@ -307,23 +377,32 @@ def _iso(row: dict) -> dict:
 
 
 def _jsonable(obj):
-    """Drop non-serializable values (e.g. langchain Document objects in ctx)."""
+    """Make a value safe for Postgres JSONB. Recurse FIRST so non-finite floats are caught:
+    LibreLane signoff metrics contain Infinity/NaN (e.g. hold worst-slack with no violation),
+    and Python's `json.dumps` happily emits the literal `Infinity` — which Postgres JSONB rejects
+    ('Token "Infinity" is invalid'), crashing the run AFTER the GDS was produced. Replace every
+    non-finite float with null; drop non-serializable values (e.g. langchain Documents)."""
+    import math
     import json
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items() if _safe(v)}
+    if isinstance(obj, list):
+        return [_jsonable(v) for v in obj if _safe(v)]
     try:
-        json.dumps(obj)
+        json.dumps(obj, allow_nan=False)          # allow_nan=False → inf/nan RAISE, not emit
         return obj
     except (TypeError, ValueError):
-        if isinstance(obj, dict):
-            return {k: _jsonable(v) for k, v in obj.items() if _safe(v)}
-        if isinstance(obj, list):
-            return [_jsonable(v) for v in obj if _safe(v)]
         return str(obj)[:2000]
 
 
 def _safe(v) -> bool:
     import json
+    if isinstance(v, (dict, list, float, int, str, bool)) or v is None:
+        return True
     try:
-        json.dumps(v)
+        json.dumps(v, allow_nan=False)
         return True
     except (TypeError, ValueError):
-        return isinstance(v, (dict, list))
+        return False

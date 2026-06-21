@@ -46,8 +46,11 @@ if [ -d "$HOME/.cache/huggingface" ]; then
 fi
 
 # --- Backend (FastAPI) ---
-echo "→ Starting FastAPI backend on http://localhost:8011"
-( cd "$REPO_ROOT/backend" && exec uv run uvicorn garuda_api.main:app --port 8011 ) &
+# --reload + --reload-dir so edits to the API (backend/) AND the pipeline engine
+# (src/garuda_chip/app.py, runner imports) take effect WITHOUT a manual restart.
+echo "→ Starting FastAPI backend on http://localhost:8011 (auto-reload on code changes)"
+( cd "$REPO_ROOT/backend" && exec uv run uvicorn garuda_api.main:app --port 8011 \
+    --reload --reload-dir "$REPO_ROOT/backend" --reload-dir "$REPO_ROOT/src" ) &
 BACKEND_PID=$!
 trap 'kill $BACKEND_PID 2>/dev/null || true' EXIT
 

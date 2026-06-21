@@ -189,6 +189,50 @@ def delete_chat(chat_id: str):
     return {"ok": True}
 
 
+@app.delete("/api/chats/{chat_id}/messages/{message_id}")
+def delete_message(chat_id: str, message_id: str):
+    """Remove one message + its run(s). Orphaned design folders are cleaned up; a design a prior
+    message still owns is kept (so deleting a bad continuation reverts to your real design)."""
+    db.delete_message(message_id)
+    return {"ok": True}
+
+
+class _MessageEdit(BaseModel):
+    content: str
+
+
+@app.patch("/api/chats/{chat_id}/messages/{message_id}")
+def edit_message(chat_id: str, message_id: str, body: _MessageEdit):
+    """Edit a message's text in place (no re-run)."""
+    db.update_message(message_id, body.content)
+    return {"ok": True}
+
+
+class _MessageRerun(BaseModel):
+    content: str
+    opts: dict | None = None
+
+
+@app.post("/api/chats/{chat_id}/messages/{message_id}/rerun")
+def rerun_message(chat_id: str, message_id: str, body: _MessageRerun):
+    """Edit a message AND re-run it (like ChatGPT) — the new run REPLACES the old one. Routes the
+    same way a fresh send does: a continuation prompt resumes the existing design, else a new run."""
+    db.update_message(message_id, body.content)
+    db.delete_runs_for_message(message_id)          # the new run replaces the old; design is kept
+    try:
+        run_opts = RunOpts(**(body.opts or {})).model_dump()
+    except Exception:  # noqa: BLE001
+        run_opts = RunOpts().model_dump()
+    prompt = body.content
+    if runner.is_continue(prompt):
+        rec = runner.resume_run(chat_id=chat_id, message_id=message_id)
+        if rec is not None:
+            return {"run": rec, "resumed": True}
+    rec = runner.start_run(chat_id=chat_id, message_id=message_id,
+                           prompt=prompt, files=[], opts=run_opts)
+    return {"run": rec}
+
+
 # --- artifacts: the design's papers / code / GDS / images, for the "shelf" UI ---
 _ART_KIND = {".v": "code", ".vh": "code", ".sv": "code", ".svh": "code",
              ".pdf": "pdf", ".png": "image", ".jpg": "image", ".jpeg": "image",
@@ -198,8 +242,17 @@ _ART_KIND = {".v": "code", ".vh": "code", ".sv": "code", ".svh": "code",
 
 @app.get("/api/chats/{chat_id}/artifacts")
 def chat_artifacts(chat_id: str):
-    run = db.latest_run_for_chat(chat_id)
-    base = Path(run["design_dir"]) if run and run.get("design_dir") else None
+    # Show the most-recent run whose design actually HAS files — NOT just the latest run (a
+    # follow-up that re-planned into an empty dir would otherwise hide your real artifacts).
+    base = None
+    for r in db.designs_for_chat(chat_id):
+        dd = r.get("design_dir")
+        if dd and (Path(dd) / "rtl").is_dir() and any((Path(dd) / "rtl").iterdir()):
+            base = Path(dd)
+            break
+    if base is None:
+        run = db.latest_run_for_chat(chat_id)
+        base = Path(run["design_dir"]) if run and run.get("design_dir") else None
     if not base or not base.exists():
         return {"artifacts": []}
     out, seen = [], set()

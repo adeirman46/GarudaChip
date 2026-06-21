@@ -241,32 +241,129 @@ def closure_files(rtl_dir: Path, top: str) -> Tuple[List[str], List[str]]:
     return [f for f in ordered if (Path(rtl_dir) / f).exists()], orphans
 
 
-def static_report(rtl_dir: Path, top: str = "") -> List[str]:
-    """Cross-module audit. Each finding is ONE actionable line naming the file,
-    the exact problem, and the fix — written for an LLM corrector to act on."""
+def audit_findings(rtl_dir: Path, top: str = "") -> List[dict]:
+    """Structured cross-module audit — the single source of truth both the text report
+    (static_report) and the deterministic fixer (reconcile_ports) build on. Each finding is
+    a dict with a `kind`: 'dupe', 'missing_module', or 'bad_port' (a `.port(...)` connection
+    that names a port the instantiated child module does not declare)."""
     info = parse_rtl(rtl_dir)
-    defs, insts, defines, includes, texts = (
-        info["defs"], info["insts"], info["defines"], info["includes"], info["texts"])
-    problems: List[str] = list(info["dupes"])
-
+    defs, insts = info["defs"], info["insts"]
+    out: List[dict] = [{"kind": "dupe", "text": d} for d in info["dupes"]]
     for parent, kids in insts.items():
         pfile = defs[parent]["file"]
         for child, inst, conns in kids:
             if child not in defs:
-                problems.append(
-                    f"{pfile}: `{parent}` instantiates module `{child}` (instance "
-                    f"`{inst}`) but NO file defines `{child}` — create rtl/{child}.v "
-                    f"or fix the module name")
+                out.append({"kind": "missing_module", "parent": parent,
+                            "parent_file": pfile, "child": child, "inst": inst})
                 continue
-            ports = set(defs[child]["ports"])
+            ports = defs[child]["ports"]
             if not ports:
                 continue
+            pset = set(ports)
             for c in conns:
-                if c not in ports:
-                    problems.append(
-                        f"{pfile}: connection `.{c}(...)` on instance `{inst}` — but "
-                        f"`{child}` ({defs[child]['file']}) has no port `{c}`; its real "
-                        f"ports are: {', '.join(defs[child]['ports'][:14])}")
+                if c not in pset:
+                    out.append({"kind": "bad_port", "parent": parent, "parent_file": pfile,
+                                "child": child, "child_file": defs[child]["file"],
+                                "inst": inst, "port": c, "child_ports": ports})
+    return out
+
+
+_DIR_SUFFIXES = ("_io", "_in", "_out", "_i", "_o")
+
+
+def _has_dir(s: str) -> bool:
+    return s.endswith(_DIR_SUFFIXES)
+
+
+def _best_port(bad: str, ports: List[str]) -> str:
+    """The UNIQUE *safe* rename for a mis-named connection `.bad(` among a child's real
+    `ports`, or '' when no rename is provably safe. A wrong deterministic rename silently
+    COMPILES and escapes the audit — strictly worse than leaving it for the cross-module LLM
+    corrector — so this only accepts two unambiguous cases and refuses everything else:
+
+      1. exact match apart from letter case (`.CLK` ↔ `clk`);
+      2. a DIRECTIONLESS connection that gains a direction (`.a` ↔ `a_i`, `.clk` ↔ `clk_i`) —
+         and only when exactly ONE child port matches.
+
+    It deliberately NEVER toggles a present direction (`_o`↔`_i` is a different net) and does
+    NO fuzzy/difflib matching (`b` vs `ab` changes meaning). Those need semantic judgement and
+    are handed to the LLM corrector, which now sees both modules."""
+    low = {p.lower(): p for p in ports}
+    b = bad.lower()
+    if b in low:                                   # case-only difference — safe
+        return low[b]
+    if not _has_dir(b):                            # bare name → it may just need a direction
+        cand = [p for p in ports
+                if p.lower() in (b + "_i", b + "_o", b + "_in", b + "_out", b + "_io")]
+        if len(cand) == 1:
+            return cand[0]
+    return ""
+
+
+def reconcile_ports(rtl_dir: Path, top: str = "") -> List[str]:
+    """Deterministically repair HIGH-CONFIDENCE cross-module port-name mismatches by renaming
+    the connection in the PARENT file to the child's real port (e.g. `.a(` → `.a_i(`). This
+    clears the mechanical findings for free (no LLM call) so the corrector only spends the
+    model on the genuine, semantic ones. SAFETY: a name is renamed only when (1) there is a
+    unique confident match on the child, and (2) that name is NOT a valid port of any OTHER
+    child instantiated in the same file (so we never clobber a legitimate connection).
+    Returns a human-readable list of the rewrites applied."""
+    rtl_dir = Path(rtl_dir)
+    info = parse_rtl(rtl_dir)
+    defs, insts = info["defs"], info["insts"]
+    changes: List[str] = []
+    by_file: Dict[str, list] = {}
+    for f in audit_findings(rtl_dir, top):
+        if f["kind"] != "bad_port":
+            continue
+        repl = _best_port(f["port"], f["child_ports"])
+        if repl and repl != f["port"]:
+            by_file.setdefault(f["parent_file"], []).append(
+                (f["port"], repl, f["child"], f["inst"], f["parent"]))
+    for fname, edits in by_file.items():
+        p = Path(rtl_dir) / fname
+        if not p.exists():
+            continue
+        src = new = p.read_text()
+        for old, repl, child, inst, parent in edits:
+            # don't rename if `old` is a real port of some sibling child in this file
+            sibling_ports = set()
+            for ch, _, _ in insts.get(parent, []):
+                if ch != child and ch in defs:
+                    sibling_ports.update(defs[ch]["ports"])
+            if old in sibling_ports:
+                continue
+            cand = re.sub(rf"\.{re.escape(old)}(\s*)\(", rf".{repl}\1(", new)
+            if cand != new:
+                new = cand
+                changes.append(f"{fname}: `.{old}` → `.{repl}` (instance `{inst}` of `{child}`)")
+        if new != src:
+            p.write_text(new)
+    return changes
+
+
+def static_report(rtl_dir: Path, top: str = "") -> List[str]:
+    """Cross-module audit. Each finding is ONE actionable line naming the file,
+    the exact problem, and the fix — written for an LLM corrector to act on."""
+    info = parse_rtl(rtl_dir)
+    defines, includes, texts = info["defines"], info["includes"], info["texts"]
+    problems: List[str] = []
+    for f in audit_findings(rtl_dir, top):
+        if f["kind"] == "dupe":
+            problems.append(f["text"])
+        elif f["kind"] == "missing_module":
+            problems.append(
+                f"{f['parent_file']}: `{f['parent']}` instantiates module `{f['child']}` "
+                f"(instance `{f['inst']}`) but NO file defines `{f['child']}` — create "
+                f"rtl/{f['child']}.v or fix the module name")
+        elif f["kind"] == "bad_port":
+            problems.append(
+                f"{f['parent_file']}: connection `.{f['port']}(...)` on instance `{f['inst']}` "
+                f"— but `{f['child']}` ({f['child_file']}) has no port `{f['port']}`; its real "
+                f"ports are: {', '.join(f['child_ports'][:14])}. FIX: either rename this "
+                f"connection to one of those real ports, OR add port `{f['port']}` to "
+                f"`{f['child']}` ({f['child_file']}) and wire it; if it's a debug/formal-only "
+                f"signal that nothing uses, delete the connection.")
 
     # bare macro usage: `define NAME exists in a header, file uses NAME without `
     for fname, raw in texts.items():

@@ -498,6 +498,17 @@ def _clean_sv_for_tools(text: str) -> str:
     return text
 
 
+def _is_data_driven(query: str) -> bool:
+    """True when the design's VALUES must be COMPUTED (a LUT to linearize, NN weights to train, a
+    C/C++ kernel to derive coefficients). Such a design is GENERATED with run_python (emit a .mem +
+    RTL), NOT copied from an anchor — so the generator follows 'make a sine LUT from python data'."""
+    return bool(re.search(
+        r"\b(python|c\+\+|cpp|\bc code\b|lut|look-?up ?table|weights?|cnn|dnn|mlp|neural|"
+        r"train(?:ed|ing)?|inferenc|sine|cosine|tanh|softmax|sigmoid|relu|gelu|exp\b|log\b|"
+        r"reciprocal|sqrt|fft|fir\b|iir\b|filter taps?|coefficients?|quantiz|\.mem\b|readmem|"
+        r"kernel|polynomial|cordic)\b", query or "", re.I))
+
+
 def _seed_rtl_from_anchor(design_dir, rec=None, query: str = "", limit: int = 24) -> List[str]:
     """COPY the anchor's RTL into rtl/ as the real STARTING POINT, so the generator ADAPTS
     working code instead of reading it and rewriting a 'simplified version' (that is what made
@@ -2212,6 +2223,23 @@ def agent_decompose(rec, ctx, feedback=""):
     ctx["top_module_name"] = top
 
 
+def _ensure_top(ctx, rtl_dir) -> str:
+    """Make ctx['top_module_name'] a REAL integration top — re-derive structurally (pick_top) if
+    it's missing OR a LEAF (instantiates nothing). A leaf like `cmp` must never be the design top
+    (that's what made the testbench/harden target the wrong module). This also lets a re-run of an
+    existing design self-correct a stale top, so you can CONTINUE without restarting generation."""
+    from verilog_check import parse_rtl, pick_top
+    cur = ctx.get("top_module_name") or ""
+    info = parse_rtl(rtl_dir)
+    kids = [c for c, _, _ in info["insts"].get(cur, []) if c in info["defs"]]
+    if cur in info["defs"] and kids:                  # current top has children → it's real
+        return cur
+    top = pick_top(rtl_dir) or cur
+    if top:
+        ctx["top_module_name"] = top
+    return top
+
+
 def agent_testbench(rec, ctx, feedback=""):
     # The testbench is a BOUNDED task: read the top module's ports, write ONE self-checking
     # tb. It is NOT run as a deep agent — the deep-agent path has no repetition breaker and
@@ -2219,9 +2247,10 @@ def agent_testbench(rec, ctx, feedback=""):
     # "testbench timed out" crashes). The one-shot path below uses stream_to, which DOES have
     # the repetition circuit-breaker, and needs a single call: far faster and more reliable.
     files = ctx["decomposed_files"]
-    top = ctx["top_module_name"]
-    top_code = files.get(f"{top}.v", next(iter(files.values())))
-    header = next((f for f in files if f.endswith(".vh")), None)
+    top = _ensure_top(ctx, Path(ctx["design_dir"]) / "rtl")   # never test a leaf like `cmp`
+    top_code = (files.get(f"{top}.v") or files.get(f"{top}.sv")
+                or next(iter(files.values()), ""))
+    header = next((f for f in files if f.endswith((".vh", ".svh"))), None)
     inc = f'Include `\`include "{header}"`.' if header else ""
     if feedback:
         inc += f"\n- User instruction: {feedback}"
@@ -2277,6 +2306,14 @@ def agent_write(rec, ctx, feedback=""):
         if isinstance(content, str) and content.strip():
             (rtl_dir / safe).write_text(content)
             written.append(f"rtl/{safe}")
+    # prune stale testbenches from a previous top (cmp_tb / fsoc_tb) so ONLY the current
+    # top's tb survives — sim and "fix the testbench" can never pick the wrong one.
+    new_tbs = {re.sub(r"[^\w.\-]", "_", n) for n, c in ctx.get("testbench_code", {}).items()
+               if isinstance(c, str) and c.strip()}
+    if new_tbs:
+        for old in list(tb_dir.glob("*_tb.v")) + list(tb_dir.glob("*_tb.sv")):
+            if old.name not in new_tbs:
+                old.unlink()
     for name, content in ctx.get("testbench_code", {}).items():
         safe = re.sub(r"[^\w.\-]", "_", name)
         if isinstance(content, str) and content.strip():
@@ -2300,14 +2337,16 @@ def agent_simulate(rec, ctx, feedback=""):
     # 3) static-audit that cone (unknown ports, bare `define macros, duplicate
     #    modules) and fail FAST with actionable findings instead of a 70-line
     #    iverilog elaboration wall.
-    from verilog_check import pick_top, closure_files, full_report, parse_rtl
+    from verilog_check import closure_files, full_report, parse_rtl, reconcile_ports
     info = parse_rtl(rtl_dir)
-    top = ctx.get("top_module_name") or ""
-    if top not in info["defs"]:
-        top = pick_top(rtl_dir)
-        if top:
-            ctx["top_module_name"] = top
-    tb_files = sorted(glob.glob(str(tb_dir / "*.v")))
+    top = _ensure_top(ctx, rtl_dir)                   # real integration top, not a leaf
+    # Compile ONLY the current top's testbench (`{top}_tb`) — never a stale leaf/other-top
+    # tb (cmp_tb.v / fsoc_tb.v) too, which would drag leaf cones into the build and collide
+    # on multiple `_tb` roots (the cause of the bogus static-check wall).
+    all_tb = sorted(glob.glob(str(tb_dir / "*.v"))) + sorted(glob.glob(str(tb_dir / "*.sv")))
+    top_tb = [f for f in all_tb if Path(f).stem.lower() == f"{top}_tb".lower()]
+    want_tb = [str(tb_dir / k) for k in ctx.get("testbench_code", {}) if (tb_dir / k).exists()]
+    tb_files = top_tb or want_tb or all_tb[:1]        # exactly one tb — the top's
     needed: set = set()
     tops = {top} if top else set()
     for tbf in tb_files:                       # modules the testbench instantiates
@@ -2330,6 +2369,19 @@ def agent_simulate(rec, ctx, feedback=""):
         rec.error("No Verilog files to simulate.")
         ctx["simulation_output"] = "Error: no Verilog files."
         return
+
+    # AUTO-RECONCILE mechanical cross-module port-name mismatches FIRST (deterministic, no
+    # LLM): high-confidence renames like `.a` → `.a_i` are fixed in place on disk, so the
+    # corrector only spends the model on the genuine semantic drops that remain.
+    fixed_ports = reconcile_ports(rtl_dir, top)
+    if fixed_ports:
+        rec.success(f"🔧 Auto-reconciled {len(fixed_ports)} port-name mismatch(es) "
+                    "deterministically (no model needed):")
+        rec.code("\n".join(fixed_ports), language="text")
+        for rel in {c.split(":", 1)[0] for c in fixed_ports}:   # re-sync edits into ctx
+            fp = rtl_dir / rel
+            if fp.exists():
+                ctx.setdefault("decomposed_files", {})[rel] = fp.read_text()
 
     audit = full_report(rtl_dir, top, only=needed or None)
     if audit:
@@ -2608,7 +2660,8 @@ Reply with ONLY JSON: {{"{name}": "<full verilog source>"}}."""
     def roll(t: float) -> dict:
         resp = stream_to(prompt | get_chat_model(temperature=t), {
             "name": name, "name_stem": name[:-2] if name.endswith(".v") else name,
-            "top": top, "code": ctx["decomposed_files"].get(f"{top}.v", ""),
+            "top": top, "code": (ctx["decomposed_files"].get(f"{top}.v")
+                                 or ctx["decomposed_files"].get(f"{top}.sv", "")),
             "err": err, "extra": extra,
         }, live)
         try:
@@ -2637,7 +2690,7 @@ Reply with ONLY JSON: {{"{name}": "<full verilog source>"}}."""
 
 def agent_harden(rec, ctx, feedback=""):
     design_dir = Path(ctx["design_dir"])
-    design_name = ctx.get("top_module_name") or slugify(ctx["query"])
+    design_name = _ensure_top(ctx, design_dir / "rtl") or slugify(ctx["query"])  # harden the real top
     if ctx.get("_sim_unverified"):
         rec.caption("ℹ️ Hardening to GDS: the RTL COMPILES (synthesizable), but its functional "
                     "testbench did not pass on the local model — the GDS is produced; verify "
@@ -2655,7 +2708,8 @@ def agent_harden(rec, ctx, feedback=""):
     # copied so `include resolves.
     from verilog_check import closure_files, pick_top
     rtl_dir = design_dir / "rtl"
-    top = design_name if (rtl_dir / f"{design_name}.v").exists() else pick_top(rtl_dir)
+    top = design_name if ((rtl_dir / f"{design_name}.v").exists()
+                          or (rtl_dir / f"{design_name}.sv").exists()) else pick_top(rtl_dir)
     closure, orphans = closure_files(rtl_dir, top)
     if orphans:
         rec.caption(f"🧹 Synthesizing only the `{top}` cone — excluding "
@@ -2735,6 +2789,13 @@ def agent_harden(rec, ctx, feedback=""):
         proc.wait()
     (chip_dir / "librelane.log").write_text("\n".join(lines))
     rec.code("\n".join(lines[-30:]) or "(no output)", language="text")
+    # FULL per-step log (synthesis → floorplan → placement → CTS → routing → DRC/LVS) in a
+    # collapsible block, so each LibreLane step's output is inspectable without scrolling the run.
+    step_lines = [ln for ln in lines if re.search(r"\bStep\b|Starting|Finished|^\s*\d+\s|Yosys|"
+                  r"OpenROAD|Floorplan|Placement|Detailed Routing|Global Routing|CTS|Magic|KLayout|"
+                  r"DRC|LVS|Antenna|error|warning", ln, re.I)]
+    if step_lines:
+        rec.expander_code("🏭 LibreLane steps — full flow log", "\n".join(step_lines)[:16000], "text")
 
     gds = sorted(glob.glob(str(chip_dir / "runs" / "**" / "final" / "**" / "*.gds"), recursive=True)) or \
         sorted(glob.glob(str(chip_dir / "runs" / "**" / "*.gds"), recursive=True))
@@ -2752,6 +2813,24 @@ def agent_harden(rec, ctx, feedback=""):
             (design_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
         rec.success(
             f"🎉 GDSII generated → `output/{design_dir.name}/{final_gds.name}`")
+        # show the chip LAYOUT image(s) LibreLane/KLayout rendered (the "see the chip" view)
+        pngs = sorted(glob.glob(str(chip_dir / "runs" / "**" / "*.png"), recursive=True))
+        pref = [p for p in pngs if re.search(r"final|signoff|route|gds|layout|render|klayout",
+                                             p, re.I)]
+        shown = 0
+        for img in (pref or pngs):
+            try:
+                dst = design_dir / ("layout_" + re.sub(r"[^\w.\-]", "_", Path(img).name))
+                shutil.copy(img, dst)
+                rec.image(str(dst), f"🔬 Chip layout — {Path(img).stem}")
+                shown += 1
+                if shown >= 2:
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+        if not shown:
+            rec.caption("ℹ️ No layout render was produced by LibreLane (enable a render step to "
+                        "get a PNG); the GDS is in the artifacts.")
     else:
         rec.error(
             f"LibreLane finished (rc={proc.returncode}) but no GDS was produced — see log above.")
@@ -2782,6 +2861,103 @@ def agent_harden(rec, ctx, feedback=""):
 # Step registry + orchestration
 # --------------------------------------------------------------------------- #
 # (emoji, title, desc, fn, accepts_feedback)
+def _target_file(msg: str, design_dir) -> str:
+    """The ONE file (rtl/ OR tb/) the user named — 'fix cmp.v', 'the rf_lut module', 'the
+    testbench'. Returns a path relative to the design dir ('rtl/cmp.v' / 'tb/cmp_tb.v') or ''."""
+    design_dir = Path(design_dir)
+    rtl, tb = design_dir / "rtl", design_dir / "tb"
+    files = (sorted(rtl.glob("*.v")) + sorted(rtl.glob("*.sv"))
+             + sorted(tb.glob("*.v")) + sorted(tb.glob("*.sv")))
+    low = (msg or "").lower()
+    m = re.search(r"\b([a-z0-9_]+\.(?:sv|v))\b", low)               # explicit filename
+    if m:
+        hit = next((p for p in files if p.name.lower() == m.group(1)), None)
+        if hit:
+            return str(hit.relative_to(design_dir))
+    if re.search(r"\btest\s?bench\b|\btb\b", low):                  # "the testbench" → the tb file
+        tbf = sorted(tb.glob("*_tb.*")) or sorted(tb.glob("*.v")) + sorted(tb.glob("*.sv"))
+        if tbf:
+            return str(tbf[0].relative_to(design_dir))
+    for p in sorted(files, key=lambda p: -len(p.stem)):            # module / stem name
+        if re.search(rf"\b{re.escape(p.stem.lower())}\b", low):
+            return str(p.relative_to(design_dir))
+    return ""
+
+
+def _web_fix_hint(rec, ctx, fname: str) -> str:
+    """A short web hint for fixing `fname` (its compile error, else its purpose) — only when the
+    user expressed doubt. Bounded: one search + a couple of crawls."""
+    from verilog_check import check_file
+    rtl = Path(ctx["design_dir"]) / "rtl"
+    err = check_file(rtl / fname, rtl) if (rtl / fname).exists() else ""
+    terms = _error_search_terms(err) or [f"{Path(fname).stem} verilog module"]
+    rec.caption(f"🔎 Searching the web for: {', '.join(terms[:2])}")
+    try:
+        urls = _web_search(terms[0], n_github=2, n_other=4, suffix="verilog")
+        docs = _crawl_urls(urls[:3], rec, limit=3)
+        return "\n\n".join((getattr(d, "page_content", "") or "")[:800] for d in docs[:2])
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def agent_fix_file(rec, ctx, feedback=""):
+    """SURGICAL single-file fix: edit ONLY the file the user named (optionally web-searching first
+    if they're unsure), compile-check it, save it — touching no other file. Driven by a chat
+    instruction like 'correct cmp.v and search online if in doubt'."""
+    from verilog_check import check_file
+    design_dir = Path(ctx["design_dir"])
+    rtl = design_dir / "rtl"
+    rel = ctx.get("_fix_target") or _target_file(feedback, design_dir)
+    if not rel or not (design_dir / rel).exists():
+        rec.warning("Couldn't tell which file to edit — name it like `cmp.v` or `the testbench`. "
+                    "No files changed.")
+        return
+    p = design_dir / rel
+    is_tb = rel.startswith("tb/") or "_tb." in p.name
+    cur = p.read_text(errors="replace")
+    err = check_file(p, rtl)
+    rec.caption(f"🩹 Editing ONLY `{rel}` (no other file is touched)…")
+    web_hint = ""
+    if re.search(r"\b(search|internet|online|web|google|doubt|unsure|look ?up|find out)\b",
+                 feedback or "", re.I):
+        web_hint = _web_fix_hint(rec, ctx, rel)
+    kind = ("self-checking TESTBENCH (a module with EMPTY ports; apply the exact input stimulus and "
+            "expected-output checks the user gives; keep $dumpfile/$dumpvars and the "
+            "'Result: PASSED'/'Result: FAILED' + $finish)" if is_tb
+            else "Verilog/SystemVerilog module")
+    prompt = (
+        f"Edit ONLY this one {kind} for the design: {ctx['query']}.\n"
+        + (f"USER INSTRUCTION: {feedback}\n" if feedback else "")
+        + (f"Its current COMPILE ERROR:\n{err[:700]}\n" if err else "")
+        + (f"Reference found on the web (apply if relevant):\n{web_hint[:1600]}\n" if web_hint else "")
+        + "Rewrite the COMPLETE module doing exactly what the user asked. Keep the SAME module name, "
+        "keep the working structure, add clear inline comments. Do NOT add other modules. Output ONLY "
+        "the module code — no prose, no ``` fences.\n\n" + cur[:9000])
+    try:
+        out = extract_code_block(clean_llm_output(
+            stream_to(get_chat_model(temperature=0.2), prompt, rec.placeholder()))) or ""
+    except Exception:  # noqa: BLE001
+        out = ""
+    out = _clean_sv_for_tools(out)
+    if "module" in out and "endmodule" in out:
+        if not is_tb:                                   # testbenches keep their own header
+            out = _restamp_header(out, re.sub(r"\.(svh|sv|vh|v)$", "", p.name), ctx["query"])
+        p.write_text(out)
+        err2 = check_file(p, rtl)
+        rec.markdown(f"💾 **`write_file_disk`** · path={rel}")
+        if err2:
+            rec.error(f"`{rel}` updated but still has a compile error:")
+            rec.code(err2[:900], "text")
+        else:
+            rec.success(f"✅ `{rel}` updated & compiles clean — no other file changed.")
+        rec.expander_code(f"📄 {p.name}", out[:6000], "verilog")
+        if is_tb:                                       # keep ctx in sync for a follow-up simulate
+            ctx.setdefault("testbench_code", {})[p.name] = out
+    else:
+        rec.warning(f"No usable module came back for `{rel}` — left it UNCHANGED.")
+    _sync_ctx_from_disk(ctx)
+
+
 STEP_DEFS = {
     "plan":          ("🧭", "Planner", "Drafts the build plan + design notes.", agent_plan, True),
     "retrieve":      ("📚", "Knowledge Recall", "Semantic recall over the pgvector knowledge store.", agent_retrieve, False),
@@ -2794,6 +2970,7 @@ STEP_DEFS = {
     "lint":          ("🔍", "Verilator Lint", "Structural lint gate before hardening.", agent_lint, False),
     "fix_design":    ("🛠️", "Module Corrector", "LLM fixes the failing design module.", agent_fix_design, True),
     "fix_testbench": ("🛠️", "Testbench Corrector", "LLM fixes the testbench.", agent_fix_testbench, True),
+    "fix_file":      ("🩹", "File Fixer", "Edit ONLY the named file (optionally web-searched).", agent_fix_file, True),
     "harden":        ("🏭", "LibreLane Hardening", "RTL → synthesis → PnR → signoff → GDSII.", agent_harden, False),
 }
 
@@ -2999,10 +3176,12 @@ def _sync_ctx_from_disk(ctx):
           for p in sorted((design_dir / "tb").glob("*.v")) + sorted((design_dir / "tb").glob("*.sv"))}
     if rtl:
         ctx["decomposed_files"] = rtl
-        if f"{ctx.get('top_module_name')}.v" not in rtl:
-            top_v = next((n for n in rtl if n.endswith(".v")), None)
-            if top_v:
-                ctx["top_module_name"] = top_v[:-2]
+        # keep the existing top if its file exists as .v OR .sv; only re-derive if it's gone —
+        # and then STRUCTURALLY (pick_top), never "the first .v file" (that picked `cmp` over `top`).
+        cur = ctx.get("top_module_name") or ""
+        if f"{cur}.v" not in rtl and f"{cur}.sv" not in rtl:
+            from verilog_check import pick_top
+            ctx["top_module_name"] = pick_top(design_dir / "rtl") or cur
     if tb:
         ctx["testbench_code"] = tb
 
@@ -3535,7 +3714,15 @@ def _deep_generate(rec, ctx, feedback=""):
     pre_existing = [p.name for p in sorted(rtl_dir0.glob("*.vh")) + sorted(rtl_dir0.glob("*.svh"))
                     + sorted(rtl_dir0.glob("*.v")) + sorted(rtl_dir0.glob("*.sv"))] \
         if rtl_dir0.exists() else []
-    seeded = _seed_rtl_from_anchor(design_dir, rec, ctx["query"]) if not pre_existing else []
+    # DATA-DRIVEN designs (a LUT to compute, NN weights to train, a C/C++ kernel) must be GENERATED
+    # with run_python — NOT copied from an anchor. Skip seeding so the generator runs Python to emit
+    # the data (.mem) and writes the RTL around it, exactly as the user asked.
+    data_driven = _is_data_driven(ctx["query"]) or _is_data_driven(feedback)
+    if data_driven and not pre_existing:
+        rec.caption("🧮 Data-driven design — computing the values in Python (run_python), "
+                    "not copying a reference.")
+    seeded = ([] if data_driven else _seed_rtl_from_anchor(design_dir, rec, ctx["query"])) \
+        if not pre_existing else []
     marker = design_dir / "context" / ".anchor_seeded"
     if seeded:
         # mark the design as anchor-seeded (already per-module on disk) so decompose preserves the
@@ -3952,12 +4139,17 @@ def _deep_testbench(rec, ctx, feedback=""):
 
 def _faulty_files(files: Dict[str, str], err: str, top: str, cap: int = 3) -> List[str]:
     """EVERY design file the error log names, in order of appearance (capped). Fixing
-    one file per sim cycle could never converge when the errors span 6 files."""
-    order = sorted((err.find(f), f) for f in files if f in err and f.endswith(".v"))
-    out = [f for _, f in order if _ >= 0][:cap]
+    one file per sim cycle could never converge when the errors span 6 files. Matches BOTH
+    `.v` AND `.sv` — an SV design's files (core.sv, top.sv, …) were silently skipped before,
+    so the corrector fell back to a random file and could NEVER fix a SystemVerilog design."""
+    order = sorted((err.find(f), f) for f in files
+                   if f in err and f.endswith((".v", ".sv")))
+    out = [f for pos, f in order if pos >= 0][:cap]
     if not out:
-        fallback = f"{top}.v"
-        out = [fallback if fallback in files else next(iter(files))]
+        for cand in (f"{top}.v", f"{top}.sv"):
+            if cand in files:
+                return [cand]
+        out = [next(iter(files))]
     return out
 
 
@@ -3999,6 +4191,30 @@ def _deep_fix_design(rec, ctx, feedback=""):
             prior_notes.append(
                 f"Earlier fix of `{f}` FAILED — do NOT reproduce it; take a different approach.")
     has_research = (cdir / "research.md").exists()
+    # CROSS-MODULE port-contract findings (the 'bad_port' kind) span TWO files — the parent
+    # with the bad connection and the child missing the port. Tell the corrector to open BOTH
+    # and reconcile the interface, instead of editing one module in isolation (which can never
+    # resolve a parent↔child mismatch). This is the class the user wants fully corrected.
+    from verilog_check import audit_findings
+    xmods = [f for f in audit_findings(design_dir / "rtl", ctx.get("top_module_name", ""))
+             if f["kind"] == "bad_port"]
+    xmod_block = ""
+    if xmods:
+        lines = [f"  • {f['parent_file']} wires `.{f['port']}` into instance `{f['inst']}` of "
+                 f"`{f['child']}` ({f['child_file']}) — which has NO port `{f['port']}`."
+                 for f in xmods[:12]]
+        childfiles = sorted({"rtl/" + f["child_file"] for f in xmods})
+        xmod_block = (
+            "\nCROSS-MODULE PORT CONTRACTS (each spans TWO files — open BOTH and reconcile):\n"
+            + "\n".join(lines)
+            + f"\nAlso read the child file(s): {', '.join(childfiles)}.\n"
+            "For EACH such finding choose exactly ONE consistent fix and apply it to BOTH files:\n"
+            "  (a) rename the connection in the parent to a REAL existing port of the child; OR\n"
+            "  (b) ADD the missing port to the child's port list with the correct direction and "
+            "WIRE it to the child's internal logic; OR\n"
+            "  (c) if it is a debug/formal-only signal nothing uses, DELETE the connection.\n"
+            "After editing, write BOTH files back so the parent's `.port(...)` list and the "
+            "child's module header match exactly.\n")
     # ERROR-HANDLING ORDER the user wants: (1) RESEARCH the error online (SearXNG/crawl4ai),
     # (2) recall the DB lesson (pg/MinIO), (3) PLAN the fix, (4) apply it. Steps 1-2 are also
     # pre-fetched below so they're already on disk, but the agent re-checks in this order.
@@ -4019,6 +4235,7 @@ def _deep_fix_design(rec, ctx, feedback=""):
         + "6) For EACH broken file: read it, REWRITE it to fix the real cause, write_file_disk it back "
           "to the SAME rtl/<name>. The write result shows a COMPILE CHECK — if it reports errors, fix "
           "and write again until clean. Keep every module name + port list compatible.\n"
+        + xmod_block
         + ("\n".join(prior_notes) + "\n" if prior_notes else "")
         + VERILOG_PITFALLS
     )
@@ -4051,6 +4268,11 @@ def _deep_fix_design(rec, ctx, feedback=""):
         remember_fix(err_sig, "", design=Path(ctx["design_dir"]).name,
                      broken=broken0 or "", fixed=files[f0])
         rec.caption("💾 Saved this error→fix lesson to the knowledge DB (pg/MinIO) for future runs.")
+    # Re-sync EVERY rtl file from disk — a cross-module fix may have edited a CHILD module that
+    # wasn't in faulty_list; without this the next `write` step would overwrite that child with
+    # stale ctx content and reopen the mismatch.
+    for disk in sorted(rtl_dir.glob("*.v")) + sorted(rtl_dir.glob("*.sv")):
+        files[disk.name] = disk.read_text()
     ctx["decomposed_files"] = files
     ctx["fix_history"] = history
 
@@ -4179,6 +4401,93 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
         "status": "running",
         "pending": None,
         "autonomous": autonomous,
+    }
+
+
+# A follow-up in a chat that ALREADY has a built design should CONTINUE it, not rebuild. This
+# matches the continuation/step verbs ("redo … testbench/simulate/lint/harden", "fix", "continue",
+# "the design"). The runner only treats a message as a continuation when a prior design exists.
+CONTINUE_RE = re.compile(
+    r"\b(redo|re-?run|re-?do|continue|resume|retry|again|fix|correct|finish|edit|update|change|"
+    r"modify|repair|adjust|debug|rewrite|harden|gds|tape-?out|synth\w*|test\s?bench|\btb\b|"
+    r"simulat\w*|\bsim\b|lint|the design|this design|the rtl|same design|keep going|proceed)\b",
+    re.I)
+
+
+def _continue_steps(msg: str):
+    """Map a follow-up instruction to the pipeline steps to run on the EXISTING design (so a chat
+    continuation does the requested work, not a full rebuild). Returns (queue, wants_harden)."""
+    low = (msg or "").lower()
+    want_gen = bool(re.search(r"\b(re-?generate|regenerate|rewrite the rtl|re-?build the rtl|new rtl)\b", low))
+    want_tb = bool(re.search(r"test\s?bench|\btb\b", low))
+    want_sim = bool(re.search(r"simulat|\bsim\b", low))
+    want_lint = bool(re.search(r"\blint", low))
+    want_hard = bool(re.search(r"\bharden|\bgds|synth|tape-?out", low))
+    q = []
+    if want_gen:
+        q += ["generate", "decompose"]
+    if want_tb:
+        q.append("testbench")
+    if want_gen or want_tb or want_sim or want_lint or want_hard:
+        q.append("write")                         # (re)write to disk before simulating
+    if want_sim or want_lint or want_hard or want_gen or want_tb:
+        q.append("simulate")                      # advance() chains simulate → lint → harden
+    # de-dupe preserving order
+    seen, out = set(), []
+    for s in q:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    if not out:
+        out = ["testbench", "write", "simulate"]  # sensible default
+    return out, want_hard
+
+
+def continue_run(query, design_dir, feedback, run_harden, clock_port, clock_period, die_um,
+                 core_util, autonomous=True, deep_steps=True, prior_ctx=None):
+    """CONTINUE an existing design from its SAVED STATE — do NOT wipe the folder or re-plan from
+    scratch. Loads the prior run's full ctx (top module, decomposed files, harden result, fix
+    history…), re-syncs rtl/ + tb/ from disk, fixes the top (never a leaf), and queues ONLY the
+    steps the instruction asks for. This is precise resume-from-state for a chat follow-up."""
+    design_dir = Path(design_dir)
+    ctx = dict(prior_ctx) if isinstance(prior_ctx, dict) else {}
+    ctx.update({"query": ctx.get("query") or query, "design_dir": str(design_dir),
+                "use_web": False, "deep_steps": deep_steps,
+                "clock_port": clock_port, "clock_period": clock_period,
+                "die_um": die_um, "core_util": core_util})
+    # ensure every key the steps expect exists (saved values win)
+    for k, dv in {"documents": [], "error_count": 0, "fix_history": {}, "decomposed_files": {},
+                  "testbench_code": {}, "top_module_name": "", "generation": "",
+                  "simulation_output": "", "web_example": "", "lint_output": "",
+                  "lint_count": 0, "uploads_digest": ""}.items():
+        ctx.setdefault(k, dv)
+    ctx["documents"] = []                           # saved docs are stringified; not needed to resume
+    # start the continuation with a CLEAN retry budget (drop stale per-step counters/flags)
+    for k in [k for k in ctx if k.startswith(("_retry_", "_crash_"))]:
+        ctx.pop(k, None)
+    ctx["error_count"] = 0
+    ctx["lint_count"] = 0
+    ctx.pop("_sim_unverified", None)
+    _sync_ctx_from_disk(ctx)                        # re-load the existing rtl/ + tb/ into ctx
+    _ensure_top(ctx, design_dir / "rtl")            # real integration top, not a stale leaf
+    # SURGICAL single-file edit: "correct cmp.v" or "set the testbench input a=8, expect y=16" →
+    # edit ONLY that file (rtl/ or tb/), leave every other file untouched. A "redo/regenerate the
+    # testbench" request still REGENERATES it (handled by _continue_steps), not a value edit.
+    low = (feedback or "").lower()
+    tgt = _target_file(feedback, design_dir)
+    regen = re.search(r"\b(redo|re-?generate|regenerate|rewrite|new)\b.{0,20}\b(test\s?bench|tb)\b", low) \
+        or re.search(r"\b(test\s?bench|tb)\b.{0,20}\b(redo|re-?generate|regenerate|from scratch)\b", low)
+    edit_intent = re.search(r"\b(fix|correct|edit|update|change|repair|debug|adjust|modify|rewrite|"
+                            r"set|expect|want|make|assign|drive|stimulus|value)\b", low)
+    if tgt and edit_intent and not regen:
+        ctx["_fix_target"] = tgt
+        steps, want_hard = ["fix_file"], False
+    else:
+        steps, want_hard = _continue_steps(feedback)
+    ctx["run_harden"] = bool(run_harden or want_hard)
+    return {
+        "ctx": ctx, "queue": steps, "transcript": [], "status": "running",
+        "pending": None, "autonomous": autonomous, "feedback": feedback,
     }
 
 

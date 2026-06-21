@@ -272,21 +272,51 @@ def start_run(*, chat_id: str, message_id: str, prompt: str,
               files: list[dict] | None = None, opts: dict | None = None) -> dict:
     """Create a run row + bus, launch the pipeline thread, return the run record."""
     pipeline = _pipeline()
+    db.clear_control_messages(chat_id)   # the user acted → drop any stale '⏸ Paused' bubble
     opts = opts or {}
     uploads = [_Upload(f["name"], f["data"]) for f in (files or []) if f.get("data")]
 
-    run_obj = pipeline.new_run(
-        prompt,
-        opts.get("use_web", True),
-        opts.get("run_harden", False),
-        opts.get("clock_port", "clk"),
-        float(opts.get("clock_period", 24.0)),
-        float(opts.get("die_um", 600.0)),
-        int(opts.get("core_util", 25)),
-        autonomous=True,
-        deep_steps=opts.get("deep_steps", True),
-        uploads=uploads,
-    )
+    # CONTINUE an existing design instead of rebuilding: if THIS chat already produced a design
+    # (rtl/ has files) and the message reads like a continuation ("redo the testbench/harden",
+    # "fix", "continue", "the design"), reuse that folder + run only the asked steps — so a
+    # follow-up doesn't wipe to an empty dir named after the message and re-plan from scratch.
+    prior = None
+    try:
+        from pathlib import Path
+        if pipeline.CONTINUE_RE.search(prompt or "") and not uploads:
+            # the most RECENT run whose design actually has RTL on disk (skip empty re-plans)
+            for r in db.designs_for_chat(chat_id):
+                dd = r.get("design_dir")
+                if not dd:
+                    continue
+                rtl = Path(dd) / "rtl"
+                if rtl.is_dir() and (any(rtl.glob("*.v")) or any(rtl.glob("*.sv"))):
+                    prior = r
+                    break
+    except Exception:
+        prior = None
+
+    if prior:
+        run_obj = pipeline.continue_run(
+            prior.get("query") or prompt, prior["design_dir"], prompt,
+            opts.get("run_harden", False), opts.get("clock_port", "clk"),
+            float(opts.get("clock_period", 24.0)), float(opts.get("die_um", 600.0)),
+            int(opts.get("core_util", 25)),
+            autonomous=True, deep_steps=opts.get("deep_steps", True),
+            prior_ctx=prior.get("ctx") if isinstance(prior.get("ctx"), dict) else None)
+    else:
+        run_obj = pipeline.new_run(
+            prompt,
+            opts.get("use_web", True),
+            opts.get("run_harden", False),
+            opts.get("clock_port", "clk"),
+            float(opts.get("clock_period", 24.0)),
+            float(opts.get("die_um", 600.0)),
+            int(opts.get("core_util", 25)),
+            autonomous=True,
+            deep_steps=opts.get("deep_steps", True),
+            uploads=uploads,
+        )
     design_dir = run_obj["ctx"]["design_dir"]
     rec = db.create_run(chat_id, message_id, prompt, design_dir)
     bus = RunBus()
@@ -487,6 +517,7 @@ def resume_run(*, chat_id: str, message_id: str) -> dict | None:
     files on disk) and continue the pipeline from where it stopped. Returns the run rec,
     or None if there's nothing resumable."""
     pipeline = _pipeline()
+    db.clear_control_messages(chat_id)   # the user acted → drop any stale '⏸ Paused' bubble
     prev = db.latest_run_for_chat(chat_id)
     if not prev:
         return None

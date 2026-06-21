@@ -46,7 +46,11 @@ function useBusyWord(active: boolean) {
 
 function BusyTag() {
   const word = useBusyWord(true);
-  return <span className="working"><span className="dot" /> {word}…</span>;
+  return (
+    <span className="working">
+      <span className="streamdots"><i /><i /><i /></span> {word}…
+    </span>
+  );
 }
 
 // --- grand-plan checklist: each item greens as the DOWNSTREAM agent reaches its phase ---
@@ -192,6 +196,9 @@ export default function App() {
   const [runMsgId, setRunMsgId] = useState<string | null>(null);
   const [artRefresh, setArtRefresh] = useState(0);   // bump to re-list artifacts
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<{ id: string; content: string } | null>(null);
+  const [editText, setEditText] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("garuda-theme") as "dark" | "light") || "dark");
 
@@ -273,6 +280,42 @@ export default function App() {
     await api.deleteChat(id);          // cascades: chat/messages/run + knowledge rows + MinIO blobs
     if (id === chatId) newChat();
     refreshChats(); refreshKnowledge();
+  }
+
+  // delete / edit ONE message (and its run) — open STYLED modals (no native browser dialogs).
+  function deleteMessage(id: string, ev?: React.MouseEvent) {
+    ev?.stopPropagation();
+    if (!chatId || running) return;
+    setConfirmMsg(id);
+  }
+  async function doDeleteMessage() {
+    const id = confirmMsg; setConfirmMsg(null);
+    if (!id || !chatId) return;
+    await api.deleteMessage(chatId, id);
+    await openChat(chatId);
+    setArtRefresh((k) => k + 1); refreshKnowledge();
+  }
+  function editMessage(id: string, cur: string, ev?: React.MouseEvent) {
+    ev?.stopPropagation();
+    if (!chatId || running) return;
+    setEditTarget({ id, content: cur }); setEditText(cur);
+  }
+  async function saveEdit() {
+    if (!editTarget || !chatId) return;
+    const { id, content } = editTarget;
+    const next = editText.trim();
+    setEditTarget(null);
+    if (!next) return;
+    if (next === content.trim()) return;               // no change → nothing to do
+    if (running && runId) api.pauseRun(runId);          // never run two at once
+    // edit AND auto re-RUN this message (the new run replaces the old) — like ChatGPT.
+    setPastRuns((p) => { const c = { ...p }; delete c[id]; return c; });
+    setMessages((m) => m.map((x) => (x.id === id ? { ...x, content: next } : x)));
+    setTranscript([]); setRunMsgId(id); setRunning(true); setPausing(false);
+    const { run } = await api.rerunMessage(chatId, id, next, opts);
+    setRunId(run.id);
+    newRunRef.current = true;
+    unsubRef.current = api.streamRun(run.id, applyEvent);
   }
 
   function applyEvent(e: RunEvent) {
@@ -421,7 +464,14 @@ export default function App() {
                 <div className="msg user">
                   <div className="avatar">🧑</div>
                   <div className="body">
-                    <div className="who">You</div>
+                    <div className="who">You
+                      {!running && (
+                        <span className="msgactions">
+                          <button title="Edit this message" onClick={(e) => editMessage(m.id, m.content, e)}>✎</button>
+                          <button title="Delete this message + its run" onClick={(e) => deleteMessage(m.id, e)}>🗑</button>
+                        </span>
+                      )}
+                    </div>
                     <div>{m.content}</div>
                     {m.files?.length ? (
                       <div className="files">
@@ -537,6 +587,46 @@ export default function App() {
             <div className="confirm-actions">
               <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
               <button className="btn-danger" onClick={doDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmMsg && (
+        <div className="modal-overlay" onClick={() => setConfirmMsg(null)}>
+          <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-icon">🗑</div>
+            <div className="confirm-title">Delete this message?</div>
+            <div className="confirm-msg">
+              Removes this message and its run. Your design files are kept unless this run was their
+              only owner. This can’t be undone.
+            </div>
+            <div className="confirm-actions">
+              <button className="btn-ghost" onClick={() => setConfirmMsg(null)}>Cancel</button>
+              <button className="btn-danger" onClick={doDeleteMessage}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTarget && (
+        <div className="modal-overlay" onClick={() => setEditTarget(null)}>
+          <div className="edit-box" onClick={(e) => e.stopPropagation()}>
+            <div className="edit-title">Edit message</div>
+            <textarea
+              className="edit-area"
+              value={editText}
+              autoFocus
+              rows={4}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit();
+                if (e.key === "Escape") setEditTarget(null);
+              }}
+            />
+            <div className="confirm-actions">
+              <button className="btn-ghost" onClick={() => setEditTarget(null)}>Cancel</button>
+              <button className="btn-primary" onClick={saveEdit}>Save</button>
             </div>
           </div>
         </div>
