@@ -1,0 +1,160 @@
+{
+  "id": "bus_wishbone_interconnect_slaves",
+  "name": "Wishbone Interconnect Slaves",
+  "category": "bus",
+  "subtitle": "Wishbone interconnect module with slaves.",
+  "source": "faiss-dataset",
+  "top": "wishbone_interconnect",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_m_we",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_m_cyc",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_m_adr",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_m_dat",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_m_int",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s0_cyc",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s0_sel",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "o_s0_dat",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_s0_adr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_s1_we",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s1_stb",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i_s1_ack",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_s1_dat",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "i_s1_int",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_s2_cyc",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s2_sel",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "o_s2_dat",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_s2_adr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_s3_we",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s3_stb",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i_s3_ack",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_s3_dat",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "i_s3_int",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_s4_cyc",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_s4_sel",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "o_s4_dat",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_s4_adr",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "wishbone_interconnect.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 195,
+  "created_at": "2026-06-21T14:57:13.389540+00:00",
+  "updated_at": "2026-06-22T14:46:02.407868+00:00"
+}

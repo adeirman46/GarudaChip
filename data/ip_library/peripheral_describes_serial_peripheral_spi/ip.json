@@ -1,0 +1,76 @@
+{
+  "id": "peripheral_describes_serial_peripheral_spi",
+  "name": "Describes Serial Peripheral SPI",
+  "category": "peripheral",
+  "subtitle": "This code describes a Serial Peripheral Interface (SPI) module with parameterized input an",
+  "source": "faiss-dataset",
+  "top": "spi",
+  "ports": [
+    {
+      "name": "datain",
+      "dir": "input",
+      "width": "[N-1:0]"
+    },
+    {
+      "name": "reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "miso",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "done",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "spi.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 40879.4,
+    "core_area_um2": 31709.7,
+    "cell_count": 1916,
+    "util_pct": 0.479682,
+    "wns_ns": 5.421037994164446,
+    "power_mw": 0.004207046236842871
+  },
+  "gds": "spi.gds",
+  "png": "spi.png",
+  "lines": 95,
+  "created_at": "2026-06-22T14:17:36.953213+00:00",
+  "updated_at": "2026-06-22T14:27:09.098617+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 1,
+    "max_fanout": 1,
+    "hold_vio": 0,
+    "setup_wns_ns": 5.421,
+    "slow_corner_slew": 0,
+    "clean": false,
+    "failed": [
+      "max_cap",
+      "max_fanout"
+    ]
+  },
+  "tapeout_ready": false
+}

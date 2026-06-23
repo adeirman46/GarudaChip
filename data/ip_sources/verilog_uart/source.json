@@ -1,0 +1,10 @@
+{
+  "name": "verilog_uart",
+  "repo": "https://github.com/alexforencich/verilog-uart",
+  "commit": "1b867e53af73",
+  "category": "peripheral",
+  "subtitle": "Lightweight UART TX/RX",
+  "rtl_files": 3,
+  "license": "",
+  "license_head": ""
+}

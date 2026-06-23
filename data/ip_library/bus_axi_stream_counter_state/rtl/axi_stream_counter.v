@@ -1,0 +1,181 @@
+module axi_stream_counter (
+        ap_clk,
+        ap_rst_n,
+        ap_start,
+        ap_done,
+        ap_idle,
+        ap_ready,
+        counter_TDATA,
+        counter_TVALID,
+        counter_TREADY,
+        ap_return
+);
+
+parameter    ap_const_logic_1 = 1'b1;
+parameter    ap_const_logic_0 = 1'b0;
+parameter    ap_ST_st1_fsm_0 = 1'b1;
+parameter    ap_const_lv32_0 = 32'b00000000000000000000000000000000;
+parameter    ap_const_lv1_1 = 1'b1;
+parameter    ap_const_lv32_1 = 32'b1;
+parameter    ap_true = 1'b1;
+
+input   ap_clk;
+input   ap_rst_n;
+input   ap_start;
+output   ap_done;
+output   ap_idle;
+output   ap_ready;
+output  [31:0] counter_TDATA;
+output   counter_TVALID;
+input   counter_TREADY;
+output  [31:0] ap_return;
+
+reg ap_done;
+reg ap_idle;
+reg ap_ready;
+reg counter_TVALID;
+reg    ap_rst_n_inv;
+(* fsm_encoding = "none" *) reg   [0:0] ap_CS_fsm = 1'b1;
+reg    ap_sig_cseq_ST_st1_fsm_0;
+reg    ap_sig_bdd_19;
+reg   [31:0] counterValue = 32'b00000000000000000000000000000000;
+wire   [31:0] counterValue_assign_fu_34_p2;
+reg    ap_sig_ioackin_counter_TREADY;
+reg    ap_reg_ioackin_counter_TREADY = 1'b0;
+reg   [0:0] ap_NS_fsm;
+reg    ap_sig_bdd_60;
+/// the current state (ap_CS_fsm) of the state machine. ///
+always @ (posedge ap_clk)
+begin : ap_ret_ap_CS_fsm
+    if (ap_rst_n_inv == 1'b1) begin
+        ap_CS_fsm <= ap_ST_st1_fsm_0;
+    end else begin
+        ap_CS_fsm <= ap_NS_fsm;
+    end
+end
+
+/// ap_reg_ioackin_counter_TREADY assign process. ///
+always @ (posedge ap_clk)
+begin : ap_ret_ap_reg_ioackin_counter_TREADY
+    if (ap_rst_n_inv == 1'b1) begin
+        ap_reg_ioackin_counter_TREADY <= ap_const_logic_0;
+    end else begin
+        if ((ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0)) begin
+            if (~((ap_start == ap_const_logic_0) | (ap_const_logic_0 == ap_sig_ioackin_counter_TREADY))) begin
+                ap_reg_ioackin_counter_TREADY <= ap_const_logic_0;
+            end else if (ap_sig_bdd_60) begin
+                ap_reg_ioackin_counter_TREADY <= ap_const_logic_1;
+            end
+        end
+    end
+end
+
+/// assign process. ///
+always @(posedge ap_clk)
+begin
+    if (((ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0) & ~((ap_start == ap_const_logic_0) | (ap_const_logic_0 == ap_sig_ioackin_counter_TREADY)))) begin
+        counterValue <= counterValue_assign_fu_34_p2;
+    end
+end
+/// ap_done assign process. ///
+always @ (ap_start or ap_sig_cseq_ST_st1_fsm_0 or ap_sig_ioackin_counter_TREADY)
+begin
+    if (((ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0) & ~((ap_start == ap_const_logic_0) | (ap_const_logic_0 == ap_sig_ioackin_counter_TREADY)))) begin
+        ap_done = ap_const_logic_1;
+    end else begin
+        ap_done = ap_const_logic_0;
+    end
+end
+
+/// ap_idle assign process. ///
+always @ (ap_start or ap_sig_cseq_ST_st1_fsm_0)
+begin
+    if ((~(ap_const_logic_1 == ap_start) & (ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0))) begin
+        ap_idle = ap_const_logic_1;
+    end else begin
+        ap_idle = ap_const_logic_0;
+    end
+end
+
+/// ap_ready assign process. ///
+always @ (ap_start or ap_sig_cseq_ST_st1_fsm_0 or ap_sig_ioackin_counter_TREADY)
+begin
+    if (((ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0) & ~((ap_start == ap_const_logic_0) | (ap_const_logic_0 == ap_sig_ioackin_counter_TREADY)))) begin
+        ap_ready = ap_const_logic_1;
+    end else begin
+        ap_ready = ap_const_logic_0;
+    end
+end
+
+/// ap_sig_cseq_ST_st1_fsm_0 assign process. ///
+always @ (ap_sig_bdd_19)
+begin
+    if (ap_sig_bdd_19) begin
+        ap_sig_cseq_ST_st1_fsm_0 = ap_const_logic_1;
+    end else begin
+        ap_sig_cseq_ST_st1_fsm_0 = ap_const_logic_0;
+    end
+end
+/// ap_sig_ioackin_counter_TREADY assign process. ///
+always @ (counter_TREADY or ap_reg_ioackin_counter_TREADY)
+begin
+    if ((ap_const_logic_0 == ap_reg_ioackin_counter_TREADY)) begin
+        ap_sig_ioackin_counter_TREADY = counter_TREADY;
+    end else begin
+        ap_sig_ioackin_counter_TREADY = ap_const_logic_1;
+    end
+end
+
+/// counter_TVALID assign process. ///
+always @ (ap_start or ap_sig_cseq_ST_st1_fsm_0 or ap_reg_ioackin_counter_TREADY)
+begin
+    if (((ap_const_logic_1 == ap_sig_cseq_ST_st1_fsm_0) & ~(ap_start == ap_const_logic_0) & (ap_const_logic_0 == ap_reg_ioackin_counter_TREADY))) begin
+        counter_TVALID = ap_const_logic_1;
+    end else begin
+        counter_TVALID = ap_const_logic_0;
+    end
+end
+/// the next state (ap_NS_fsm) of the state machine. ///
+always @ (ap_start or ap_CS_fsm or ap_sig_ioackin_counter_TREADY)
+begin
+    case (ap_CS_fsm)
+        ap_ST_st1_fsm_0 : 
+        begin
+            ap_NS_fsm = ap_ST_st1_fsm_0;
+        end
+        default : 
+        begin
+            ap_NS_fsm = 'bx;
+        end
+    endcase
+end
+
+assign ap_return = ap_const_lv32_0;
+
+/// ap_rst_n_inv assign process. ///
+always @ (ap_rst_n)
+begin
+    ap_rst_n_inv = ~ap_rst_n;
+end
+
+/// ap_sig_bdd_19 assign process. ///
+always @ (ap_CS_fsm)
+begin
+    ap_sig_bdd_19 = (ap_CS_fsm[ap_const_lv32_0] == ap_const_lv1_1);
+end
+/// ap_sig_bdd_19 assign process. ///
+always @ (ap_CS_fsm)
+begin
+    ap_sig_bdd_19 = (ap_CS_fsm[ap_const_lv32_0] == ap_const_lv1_1);
+end
+
+/// ap_sig_bdd_60 assign process. ///
+always @ (ap_start or counter_TREADY)
+begin
+    ap_sig_bdd_60 = (~(ap_start == ap_const_logic_0) & (ap_const_logic_1 == counter_TREADY));
+end
+assign counterValue_assign_fu_34_p2 = (counterValue + ap_const_lv32_1);
+assign counter_TDATA = (counterValue + ap_const_lv32_1);
+
+
+endmodule

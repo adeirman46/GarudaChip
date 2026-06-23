@@ -1,0 +1,10 @@
+{
+  "name": "i2c",
+  "repo": "https://github.com/alexforencich/verilog-i2c",
+  "commit": "a65be4045e89",
+  "category": "peripheral",
+  "subtitle": "I2C master/slave",
+  "rtl_files": 10,
+  "license": "",
+  "license_head": ""
+}

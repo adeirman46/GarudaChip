@@ -3,9 +3,20 @@ import ReactMarkdown from "react-markdown";
 import { api } from "./api";
 import { Artifacts } from "./Artifacts";
 import { BlockView } from "./Block";
+import { ChipStudio } from "./ChipStudio";
+import { IPLibrary } from "./IPLibrary";
 import { KnowledgePanel } from "./Knowledge";
+import { Simulation } from "./Simulation";
 import { DEFAULT_CONSTRAINTS } from "./types";
-import type { Block, Chat, KnowledgeStats, Message, RunConstraints, RunEvent, TranscriptRecord } from "./types";
+import type { Block, Chat, KnowledgeStats, Message, Project, RunConstraints, RunEvent, TranscriptRecord } from "./types";
+
+type View = "chat" | "ips" | "sim" | "studio" | "knowledge";
+const NAV: { key: View; icon: string; label: string }[] = [
+  { key: "chat", icon: "💬", label: "Design Chat" },
+  { key: "ips", icon: "🧩", label: "IP Library" },
+  { key: "sim", icon: "🔬", label: "Simulation" },
+  { key: "studio", icon: "▦", label: "Chip Studio" },
+];
 
 const STEP_EMOJI: Record<string, string> = {
   plan: "🧭", retrieve: "📚", web: "🌐", generate: "✍️", decompose: "🧩",
@@ -188,7 +199,13 @@ export default function App() {
   const [pausing, setPausing] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeStats | null>(null);
-  const [view, setView] = useState<"chat" | "knowledge">("chat");
+  const [view, setView] = useState<View>("chat");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [seedIP, setSeedIP] = useState<string | null>(null);
+  const [newProject, setNewProject] = useState(false);
+  const [projName, setProjName] = useState("");
+  const [pendingProject, setPendingProject] = useState<string | null>(null);
   // each finished run's transcript, keyed by the user message that triggered it (so the
   // chat alternates User → Assistant → User → Assistant). The LIVE run uses `transcript`,
   // anchored to `runMsgId`.
@@ -217,7 +234,7 @@ export default function App() {
   const setOpt = <K extends keyof RunConstraints>(k: K, v: RunConstraints[K]) =>
     setOpts((o) => ({ ...o, [k]: v }));
 
-  useEffect(() => { refreshChats(); refreshKnowledge(); }, []);
+  useEffect(() => { refreshChats(); refreshKnowledge(); refreshProjects(); }, []);
   // on reload, reopen the chat the user was in (reconnects to a live run via SSE replay)
   useEffect(() => {
     const last = localStorage.getItem("garuda-chat");
@@ -228,6 +245,21 @@ export default function App() {
 
   async function refreshChats() { setChats(await api.listChats()); }
   async function refreshKnowledge() { try { setKnowledge(await api.knowledge()); } catch { /* */ } }
+  async function refreshProjects() { try { setProjects(await api.listProjects()); } catch { /* */ } }
+
+  async function addProject() {
+    const name = projName.trim() || "New project";
+    const p = await api.createProject(name);
+    setNewProject(false); setProjName("");
+    setExpanded((e) => ({ ...e, [p.id]: true }));
+    refreshProjects();
+  }
+  async function removeProject(id: string, ev?: React.MouseEvent) {
+    ev?.stopPropagation();
+    await api.deleteProject(id, false);   // unfile its chats, keep them
+    refreshProjects(); refreshChats();
+  }
+  function openTab(v: View) { setView(v); }
 
   async function openChat(id: string) {
     setView("chat");                             // selecting a chat always returns to the chat view
@@ -257,13 +289,14 @@ export default function App() {
     }
   }
 
-  async function newChat() {
+  async function newChat(projectId: string | null = null) {
     setView("chat");                             // new chat always returns to the chat view
     // don't pause the running build — it keeps going server-side in its own chat
     unsubRef.current?.();
     localStorage.removeItem("garuda-chat");
     setChatId(null); setMessages([]); setTranscript([]); setRunId(null); setRunning(false);
     setPastRuns({}); setRunMsgId(null);
+    setPendingProject(projectId);                // the next send creates the chat in this project
     setOpts({ ...DEFAULT_CONSTRAINTS });
     setShowConstraints(true);   // pop the constraints picker out on every new chat
   }
@@ -360,7 +393,10 @@ export default function App() {
     if (!prompt.trim() || running) return;
     if (running && runId) api.pauseRun(runId);   // never run two at once in a chat
     let cid = chatId;
-    if (!cid) { const c = await api.createChat(); cid = c.id; setChatId(c.id); await refreshChats(); }
+    if (!cid) {
+      const c = await api.createChatIn(pendingProject); cid = c.id; setChatId(c.id);
+      setPendingProject(null); await refreshChats(); refreshProjects();
+    }
 
     const tmpId = "tmp-" + Date.now();
     const userMsg: Message = {
@@ -408,17 +444,68 @@ export default function App() {
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
         </div>
-        <button className="newchat" onClick={newChat}>＋ New chat</button>
-        <div className="chatlist">
-          {chats.map((c) => (
-            <div key={c.id} className={"chatitem" + (c.id === chatId ? " active" : "")}
-                 onClick={() => openChat(c.id)}>
-              <span className="ctitle">{c.title}</span>
-              <span className="del" title="Delete chat + its design from DB & object storage"
-                    onClick={(ev) => askDelete(c.id, ev)}>🗑</span>
-            </div>
+        <nav className="topnav">
+          {NAV.map((n) => (
+            <button key={n.key} className={"navbtn" + (view === n.key ? " on" : "")}
+                    onClick={() => openTab(n.key)}>
+              <span className="navicon">{n.icon}</span>{n.label}
+            </button>
           ))}
-        </div>
+        </nav>
+
+        {view === "chat" && (
+          <div className="chatside">
+            <button className="newchat" onClick={() => newChat(null)}>＋ New chat</button>
+            <div className="projbar">
+              <span>Projects</span>
+              <button className="ghost xs" title="New project" onClick={() => setNewProject(true)}>＋</button>
+            </div>
+            {newProject && (
+              <div className="projnew">
+                <input autoFocus value={projName} placeholder="Project name…"
+                       onChange={(e) => setProjName(e.target.value)}
+                       onKeyDown={(e) => { if (e.key === "Enter") addProject(); if (e.key === "Escape") setNewProject(false); }} />
+                <button className="ghost xs" onClick={addProject}>✓</button>
+              </div>
+            )}
+            <div className="chatlist">
+              {projects.map((p) => {
+                const inProj = chats.filter((c) => c.project_id === p.id);
+                const isOpen = expanded[p.id] ?? true;
+                return (
+                  <div key={p.id} className="projgroup">
+                    <div className="projhead" onClick={() => setExpanded((e) => ({ ...e, [p.id]: !isOpen }))}>
+                      <span className="pchev">{isOpen ? "▾" : "▸"}</span>
+                      <span className="picon">📁</span>
+                      <span className="pname">{p.name}</span>
+                      <span className="pcount">{inProj.length}</span>
+                      <span className="padd" title="New chat in project"
+                            onClick={(e) => { e.stopPropagation(); newChat(p.id); }}>＋</span>
+                      <span className="del" title="Delete project (keeps its chats)"
+                            onClick={(e) => removeProject(p.id, e)}>🗑</span>
+                    </div>
+                    {isOpen && inProj.map((c) => (
+                      <div key={c.id} className={"chatitem inproj" + (c.id === chatId ? " active" : "")}
+                           onClick={() => openChat(c.id)}>
+                        <span className="ctitle">{c.title}</span>
+                        <span className="del" onClick={(ev) => askDelete(c.id, ev)}>🗑</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              <div className="projbar"><span>Chats</span></div>
+              {chats.filter((c) => !c.project_id).map((c) => (
+                <div key={c.id} className={"chatitem" + (c.id === chatId ? " active" : "")}
+                     onClick={() => openChat(c.id)}>
+                  <span className="ctitle">{c.title}</span>
+                  <span className="del" title="Delete chat + its design from DB & object storage"
+                        onClick={(ev) => askDelete(c.id, ev)}>🗑</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className={"kbadge clickable" + (view === "knowledge" ? " active" : "")}
              title="Browse / search / edit the knowledge store (Postgres + MinIO)"
              onClick={() => setView((v) => (v === "knowledge" ? "chat" : "knowledge"))}>
@@ -428,7 +515,10 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {view === "knowledge" ? <KnowledgePanel /> : <>
+        {view === "knowledge" ? <KnowledgePanel /> :
+         view === "ips" ? <IPLibrary onSimulate={(id) => { setSeedIP(id); setView("sim"); }} /> :
+         view === "sim" ? <Simulation seedIP={seedIP} /> :
+         view === "studio" ? <ChipStudio /> : <>
         <div className="topbar">
           <span className="title">{chats.find((c) => c.id === chatId)?.title || "New chat"}</span>
           <span className="pill">Ollama · qwen3.5:9b</span>

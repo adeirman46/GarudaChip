@@ -1,0 +1,10 @@
+{
+  "name": "uart16550",
+  "repo": "https://github.com/freecores/uart16550",
+  "commit": "2b0ad80d0968",
+  "category": "peripheral",
+  "subtitle": "16550-compatible UART",
+  "rtl_files": 12,
+  "license": "",
+  "license_head": ""
+}

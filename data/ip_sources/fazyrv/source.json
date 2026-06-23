@@ -1,0 +1,10 @@
+{
+  "name": "fazyrv",
+  "repo": "https://github.com/meiniKi/FazyRV",
+  "commit": "c8d9c7971b91",
+  "category": "core",
+  "subtitle": "Scalable 1/2/4/8-bit-datapath RV32I core",
+  "rtl_files": 20,
+  "license": "",
+  "license_head": ""
+}

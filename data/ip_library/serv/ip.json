@@ -1,0 +1,154 @@
+{
+  "id": "serv",
+  "name": "serv",
+  "category": "core",
+  "subtitle": "World's smallest RV32I core (bit-serial, ~200 GE)",
+  "source": "clone:https://github.com/olofk/serv",
+  "top": "serv_rf_top",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_timer_irq",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "rvfi_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rvfi_insn",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_halt",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rvfi_mode",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "rvfi_rs1_addr",
+      "dir": "output",
+      "width": "[4:0]"
+    },
+    {
+      "name": "rvfi_rs1_rdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_rd_addr",
+      "dir": "output",
+      "width": "[4:0]"
+    },
+    {
+      "name": "rvfi_pc_rdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_mem_addr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_mem_wmask",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "rvfi_mem_wdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_ibus_adr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "i_ibus_rdt",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_dbus_adr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_dbus_sel",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "o_dbus_cyc",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i_dbus_ack",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_ext_rs2",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "i_ext_rd",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_mdu_valid",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "serv_mem_if.v",
+    "serv_state.v",
+    "serv_rf_ram_if.v",
+    "serv_compdec.v",
+    "serv_aligner.v",
+    "serv_bufreg2.v",
+    "serv_immdec.v",
+    "serv_rf_if.v",
+    "serv_csr.v",
+    "serv_alu.v",
+    "serv_rf_ram.v",
+    "serv_top.v",
+    "serv_rf_top.v",
+    "serv_synth_wrapper.v",
+    "serv_ctrl.v",
+    "serv_bufreg.v",
+    "serv_decode.v",
+    "serv_debug.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 429298,
+    "core_area_um2": 399373,
+    "cell_count": 23518,
+    "util_pct": 0.525889,
+    "wns_ns": -7.489262755269424,
+    "power_mw": 0.06788641959428787
+  },
+  "gds": "serv_rf_top.gds",
+  "png": "serv_rf_top.png",
+  "lines": 3562,
+  "created_at": "2026-06-22T08:34:27.273008+00:00",
+  "updated_at": "2026-06-22T08:52:12.193728+00:00"
+}

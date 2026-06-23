@@ -441,7 +441,7 @@ def _save_plan(design_dir, step: str, pts: List[str]) -> None:
     p.write_text(json.dumps(list(pts)))
 
 
-def _anchor_module_list(design_dir, limit: int = 40) -> List[tuple]:
+def _anchor_module_list(design_dir, limit: int = 120) -> List[tuple]:
     """(module_name, relpath) for every module DEFINED in the cloned anchor design under
     context/anchor/. The architect bases the Module Map on THESE blocks — same decomposition,
     adapt only widths/ports/ops — and the generator copies+adapts them. 'See what's inside the
@@ -538,13 +538,36 @@ def _is_data_driven(query: str) -> bool:
         r"kernel|polynomial|cordic)\b", query or "", re.I))
 
 
-def _seed_rtl_from_anchor(design_dir, rec=None, query: str = "", limit: int = 24) -> List[str]:
+def _split_sv_modules(text: str) -> List[tuple]:
+    """Split a FLAT (FIRRTL/Chisel-style) Verilog/SystemVerilog file into its individual
+    `(module_name, module_source)` blocks. Such files never nest modules, so each block runs
+    from a top-level `module NAME` to the next top-level `module` (capturing its `endmodule`
+    and any inline ``define` guards that belong to it). Returns [] for a 0- or 1-module file so
+    the caller keeps handling those as a single unit.
+
+    This is the heart of the 'CGRA produced only 1 module' fix: the CGRA anchor packs all ~100
+    modules into ONE 21k-line file, so copying it as a single rtl/<first-module>.sv collapsed the
+    whole design to its first block. Splitting restores one file (and one plan item) per module."""
+    starts = [(m.start(), m.group(1))
+              for m in re.finditer(r"(?m)^[ \t]*module\s+([A-Za-z_]\w*)", text)]
+    if len(starts) <= 1:
+        return []
+    out: List[tuple] = []
+    for i, (pos, name) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(text)
+        out.append((name, text[pos:end].rstrip() + "\n"))
+    return out
+
+
+def _seed_rtl_from_anchor(design_dir, rec=None, query: str = "", limit: int = 120) -> List[str]:
     """COPY the anchor's RTL into rtl/ as the real STARTING POINT, so the generator ADAPTS
     working code instead of reading it and rewriting a 'simplified version' (that is what made
-    it slow and inconsistent). Each anchor file is copied to rtl/<its first module>.v,
-    auto-repaired, RE-HEADERED to this design (the legacy banner is stripped — see
-    `_restamp_header`), and deduped; testbenches are skipped. Returns the seeded rtl filenames.
-    This is the deterministic copy+adapt the user asked for — no retyping, no re-planning."""
+    it slow and inconsistent). One rtl file PER MODULE — a multi-module anchor file is SPLIT so
+    every block becomes its own rtl/<module>.v with its own plan item (the fix for a 100-module
+    CGRA collapsing to a single IOB.sv). Shared ``define`/param HEADER files (no module of their
+    own, e.g. sim_define.sv) are seeded too — guarded with ``ifndef` and ``include`d into each
+    module — so the split files still compile. Everything is auto-repaired and RE-HEADERED to this
+    design (legacy banner stripped); testbenches are skipped. Returns the seeded rtl filenames."""
     design_dir = Path(design_dir)
     adir = design_dir / "context" / "anchor"
     rtl = design_dir / "rtl"
@@ -556,44 +579,76 @@ def _seed_rtl_from_anchor(design_dir, rec=None, query: str = "", limit: int = 24
         return []
     seeded: List[str] = []
     seen_mod: set = set()
+    headers: List[str] = []
     all_files = sorted(adir.rglob("*.v")) + sorted(adir.rglob("*.sv"))
     # NEVER seed from the DB 'recalled/' fallback — it's a few stale files from a past run, and
     # seeding only those produced the tiny 2-file design the user hit. Seed ONLY a real cloned
     # web repo; if none, return [] so generation builds the FULL design from scratch (with
     # recalled/ still available as a hint), never a 2-file stub.
-    files = [p for p in all_files if "recalled" not in p.parts]
-    # SUPPORT BOTH .v AND .sv — keep each module's NATIVE extension (the whole toolchain handles
-    # both: iverilog -g2012, Verilator, and LibreLane's slang frontend). A plain-Verilog module
-    # stays .v, a SystemVerilog one stays .sv.
+    files = [p for p in all_files
+             if "recalled" not in p.parts and "papers" not in p.parts
+             and not re.search(r"(_tb|tb_|test|bench)", p.name, re.I)]
+
+    # PASS 1 — shared HEADER/param files: no module of their own, but real ``define`/``include`/
+    # ``timescale`/package content the modules depend on. A flat FIRRTL design keeps its parameters
+    # here (sim_define.sv: ``define CFGW …`); without them the split modules don't compile. Guard
+    # each with ``ifndef` so ``include`ing it from many files (and the design top) is harmless.
     for p in files:
-        if "papers" in p.parts or re.search(r"(_tb|tb_|test|bench)", p.name, re.I):
+        try:
+            txt = p.read_text(errors="replace")
+        except Exception:  # noqa: BLE001
             continue
+        body = _vstrip(txt)
+        if re.search(r"\bmodule\s+[A-Za-z_]\w*", body):
+            continue                                   # has a module → PASS 2 handles it
+        if not re.search(r"`(define|include|timescale)\b|\b(package|typedef|parameter)\b", body):
+            continue                                   # nothing reusable
+        hname = re.sub(r"\.(sv|v)$", "", p.name) + (".svh" if p.suffix.lower() == ".sv" else ".vh")
+        guard = "GARUDA_" + re.sub(r"\W", "_", hname).upper()
+        rtl.mkdir(parents=True, exist_ok=True)
+        (rtl / hname).write_text(f"`ifndef {guard}\n`define {guard}\n{txt.rstrip()}\n`endif\n")
+        headers.append(hname)
+    inc = "".join(f'`include "{h}"\n' for h in headers)
+
+    # PASS 2 — modules: ONE rtl file per module. A single-module file copies as-is; a MULTI-module
+    # file is split so the plan + module map reflect EVERY block (the CGRA fix). Keep each module's
+    # NATIVE extension (.v plain-Verilog, .sv SystemVerilog — the whole toolchain handles both).
+    for p in files:
         try:
             txt = p.read_text(errors="replace")
         except Exception:  # noqa: BLE001
             continue
         names = re.findall(r"\bmodule\s+([A-Za-z_]\w*)", _vstrip(txt))
-        if not names or names[0] in seen_mod:
+        if not names:
             continue
-        seen_mod.update(names)
         suffix = p.suffix.lower() if p.suffix.lower() in (".v", ".sv") else ".v"
-        dest = rtl / f"{names[0]}{suffix}"
-        if dest.exists():
+        blocks = _split_sv_modules(txt) or [(names[0], txt)]
+        for name, code in blocks:
+            if name in seen_mod:
+                continue
+            seen_mod.add(name)
+            dest = rtl / f"{name}{suffix}"
+            if dest.exists():
+                seeded.append(dest.name)
+                continue
+            try:
+                code, _ = autofix_text(code)
+            except Exception:  # noqa: BLE001
+                pass
+            if inc and '`include' not in code.split("module", 1)[0]:
+                code = inc + code                      # pull in the shared param/define header(s)
+            code = _restamp_header(code, name, query)  # banner on top, includes + module below
+            code = _clean_sv_for_tools(code)           # strip tool-incompatible pragmas/assertions
+            rtl.mkdir(parents=True, exist_ok=True)
+            dest.write_text(code)
             seeded.append(dest.name)
-            continue
-        try:
-            txt, _ = autofix_text(txt)
-        except Exception:  # noqa: BLE001
-            pass
-        txt = _restamp_header(txt, names[0], query)   # drop the legacy banner → this design's header
-        txt = _clean_sv_for_tools(txt)                # strip tool-incompatible pragmas/assertions
-        rtl.mkdir(parents=True, exist_ok=True)
-        dest.write_text(txt)
-        seeded.append(dest.name)
+            if len(seeded) >= limit:
+                break
         if len(seeded) >= limit:
             break
     if rec and seeded:
-        rec.caption(f"🧩 {len(seeded)} module(s) set up for generation.")
+        rec.caption(f"🧩 {len(seeded)} module(s) set up for generation"
+                    + (f" + {len(headers)} shared header(s)" if headers else "") + ".")
     return seeded
 
 
@@ -705,12 +760,19 @@ def _anchor_clean_src(design_dir, fn: str, query: str = "") -> str:
     return ""
 
 
-def _adapt_modules_one_by_one(rec, design_dir, ctx, files: List[str], feedback="") -> None:
-    """The generator, ONE module at a time, top-to-bottom: for EACH module WRITE it (a bounded
-    one-shot — the model REWRITES it in its own words with detailed comments, not a copy),
-    COMPILE-CHECK it, signal the write so the plan greens IN ORDER, then continue. Each module is
-    small + verified; one that won't compile gets one bounded fix, else falls back to the verified
-    version so the build never ends broken. Per-module progress + per-module verification."""
+def _adapt_modules_one_by_one(rec, design_dir, ctx, files: List[str], feedback="",
+                              rewrite: bool = True) -> None:
+    """The generator, ONE module at a time, top-to-bottom: for EACH module WRITE it, COMPILE-CHECK
+    it, signal the write so the plan greens IN ORDER, then continue. Each module is small + verified;
+    one that won't compile gets one bounded fix, else falls back to the verified version so the build
+    never ends broken. Per-module progress + per-module verification.
+
+    `rewrite=True` (small designs): the model REWRITES each module in its own words with detailed
+    comments, adapting widths/ports to the spec. `rewrite=False` (a big multi-module anchor — e.g.
+    a 100-module CGRA): the seeded modules are PROVEN code, so they are kept VERBATIM (restamped +
+    compile-checked) and the model is only invoked to REPAIR a module that fails to compile. This
+    keeps a 100-module copy fast and safe — re-typing dozens of complex modules with a 9B model both
+    corrupts the design and takes forever."""
     from verilog_check import check_file
     rtl = Path(design_dir) / "rtl"
     spec = ctx["query"]
@@ -722,20 +784,23 @@ def _adapt_modules_one_by_one(rec, design_dir, ctx, files: List[str], feedback="
             else _anchor_clean_src(design_dir, fn, spec)
         if not ref.strip():
             continue
-        prompt = (
-            f"Write ONE complete Verilog/SystemVerilog module named `{stem}` for this chip: {spec}.\n"
-            + (f"USER NEED: {feedback}\n" if feedback else "")
-            + "A working reference for the same module is below. REWRITE it as your OWN clean "
-            "implementation — do NOT just copy it: keep the logic correct, adapt the data widths / "
-            "parameters / ops to the spec, and ADD CLEAR, DETAILED COMMENTS explaining what every "
-            "section, port, and signal does. Do NOT rename the module, do NOT add other modules. "
-            "Output ONLY the complete module code — no prose, no ``` fences.\n\n"
-            + ref[:9000])
-        try:
-            out = clean_llm_output(stream_to(get_chat_model(temperature=0.2), prompt, rec.placeholder()))
-            out = extract_code_block(out) or out
-        except Exception:  # noqa: BLE001
-            out = ""
+        if not rewrite:
+            out = ref                               # keep the proven seeded module verbatim
+        else:
+            prompt = (
+                f"Write ONE complete Verilog/SystemVerilog module named `{stem}` for this chip: {spec}.\n"
+                + (f"USER NEED: {feedback}\n" if feedback else "")
+                + "A working reference for the same module is below. REWRITE it as your OWN clean "
+                "implementation — do NOT just copy it: keep the logic correct, adapt the data widths / "
+                "parameters / ops to the spec, and ADD CLEAR, DETAILED COMMENTS explaining what every "
+                "section, port, and signal does. Do NOT rename the module, do NOT add other modules. "
+                "Output ONLY the complete module code — no prose, no ``` fences.\n\n"
+                + ref[:9000])
+            try:
+                out = clean_llm_output(stream_to(get_chat_model(temperature=0.2), prompt, rec.placeholder()))
+                out = extract_code_block(out) or out
+            except Exception:  # noqa: BLE001
+                out = ""
         out = _clean_sv_for_tools(out)
         if "module" in out and "endmodule" in out:
             (rtl / fn).write_text(out)
@@ -3976,8 +4041,16 @@ def _deep_generate(rec, ctx, feedback=""):
         rec.plan(sub)
         # SMART per-module loop: read → REWRITE with a GarudaChip header + inline comments →
         # compile-check → tick, ONE module at a time (bounded one-shot each, never an open-ended
-        # agent that read-loops); a botched rewrite falls back to the verified version.
-        _adapt_modules_one_by_one(rec, design_dir, ctx, on_disk, feedback)
+        # agent that read-loops); a botched rewrite falls back to the verified version. A BIG
+        # multi-module design (e.g. a 100-module CGRA split out of one anchor file) is copied
+        # VERBATIM — re-typing dozens of proven modules with a 9B model corrupts them and is slow;
+        # only small designs get the per-module spec adaptation.
+        big = len([f for f in on_disk if f.lower().endswith((".v", ".sv"))]) > 12
+        if big:
+            rec.caption(f"🧱 Large design ({len(on_disk)} modules) — copying the proven modules "
+                        "verbatim (with this design's header) and compile-checking each; the model "
+                        "only steps in to repair a module that fails to compile.")
+        _adapt_modules_one_by_one(rec, design_dir, ctx, on_disk, feedback, rewrite=not big)
         from verilog_check import pick_top as _pt
         ctx["top_module_name"] = _pt(design_dir / "rtl") or "top"
         final = ""

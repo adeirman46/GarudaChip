@@ -1,0 +1,47 @@
+{
+  "id": "peripheral_controlling_ov7670_camera_i2c",
+  "name": "Controlling OV7670 Camera I2C",
+  "category": "peripheral",
+  "subtitle": "This code is a module for controlling an OV7670 camera with I2C communication and setting ",
+  "source": "faiss-dataset",
+  "top": "ov7670_controller2",
+  "ports": [
+    {
+      "name": "clk25Mhz",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "OV7670_SIOC",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "OV7670_RESET",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "OV7670_XCLK",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "LUT_INDEX",
+      "dir": "output",
+      "width": "[7:0]"
+    }
+  ],
+  "rtl": [
+    "ov7670_controller2.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 163,
+  "created_at": "2026-06-22T14:17:36.811670+00:00",
+  "updated_at": "2026-06-22T14:40:07.316431+00:00"
+}

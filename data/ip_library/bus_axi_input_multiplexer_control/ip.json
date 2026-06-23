@@ -1,0 +1,102 @@
+{
+  "id": "bus_axi_input_multiplexer_control",
+  "name": "AXI Input Multiplexer Control",
+  "category": "bus",
+  "subtitle": "AXI input multiplexer module with control.",
+  "source": "faiss-dataset",
+  "top": "axis_mux_4",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_0_axis_tdata",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "input_0_axis_tready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "input_0_axis_tuser",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_1_axis_tvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_1_axis_tlast",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_2_axis_tdata",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "input_2_axis_tready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "input_2_axis_tuser",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_3_axis_tvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_3_axis_tlast",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "output_axis_tdata",
+      "dir": "output",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "output_axis_tready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "output_axis_tuser",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "select",
+      "dir": "input",
+      "width": "[1:0]"
+    }
+  ],
+  "rtl": [
+    "axis_mux_4.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 17080.7,
+    "core_area_um2": 11439.2,
+    "cell_count": 718,
+    "util_pct": 0.74976,
+    "wns_ns": 8.410767431695469,
+    "power_mw": 0.006863653659820557
+  },
+  "gds": "axis_mux_4.gds",
+  "png": "axis_mux_4.png",
+  "lines": 232,
+  "created_at": "2026-06-21T14:57:13.270903+00:00",
+  "updated_at": "2026-06-22T08:32:37.025306+00:00"
+}

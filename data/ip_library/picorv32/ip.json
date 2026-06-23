@@ -1,0 +1,162 @@
+{
+  "id": "picorv32",
+  "name": "picorv32",
+  "category": "core",
+  "subtitle": "Simple, well-proven RV32IMC core",
+  "source": "clone:https://github.com/YosysHQ/picorv32",
+  "top": "picorv32_axi",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "resetn",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_awvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_awaddr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "mem_axi_wvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_wdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "mem_axi_bvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_arvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_araddr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "mem_axi_rvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "mem_axi_rdata",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "pcpi_insn",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "pcpi_rs2",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "pcpi_rd",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "pcpi_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "eoi",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rvfi_insn",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_halt",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rvfi_rs1_addr",
+      "dir": "output",
+      "width": "[4:0]"
+    },
+    {
+      "name": "rvfi_rs1_rdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_rd_addr",
+      "dir": "output",
+      "width": "[4:0]"
+    },
+    {
+      "name": "rvfi_pc_rdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_mem_addr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "rvfi_mem_wmask",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "rvfi_mem_wdata",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "trace_valid",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "picorv32.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 636022,
+    "core_area_um2": 598517,
+    "cell_count": 34135,
+    "util_pct": 0.517634,
+    "wns_ns": -11.380033237857852,
+    "power_mw": 0.1873951256275177
+  },
+  "gds": "picorv32_axi.gds",
+  "png": "picorv32_axi.png",
+  "lines": 3049,
+  "created_at": "2026-06-22T07:26:02.620791+00:00",
+  "updated_at": "2026-06-22T07:33:59.563599+00:00"
+}

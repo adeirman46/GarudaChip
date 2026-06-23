@@ -1,0 +1,10 @@
+{
+  "name": "zip_fft",
+  "repo": "https://github.com/ZipCPU/dblclockfft",
+  "commit": "3378b77d83a9",
+  "category": "dsp",
+  "subtitle": "Pipelined FFT core",
+  "rtl_files": 12,
+  "license": "",
+  "license_head": ""
+}

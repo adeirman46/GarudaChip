@@ -1,0 +1,90 @@
+{
+  "id": "memory_dual_port_ram_timing_specifications",
+  "name": "Dual-port RAM Timing Specifications",
+  "category": "memory",
+  "subtitle": "Dual-port RAM module with timing specifications.",
+  "source": "faiss-dataset",
+  "top": "RAM32M",
+  "ports": [
+    {
+      "name": "DOA",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "DOC",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "ADDRA",
+      "dir": "input",
+      "width": "[4:0]"
+    },
+    {
+      "name": "ADDRB",
+      "dir": "input",
+      "width": "[4:0]"
+    },
+    {
+      "name": "ADDRC",
+      "dir": "input",
+      "width": "[4:0]"
+    },
+    {
+      "name": "DIA",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "DIC",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "WCLK",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "RAM32M.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 106013,
+    "core_area_um2": 91445.4,
+    "cell_count": 4993,
+    "util_pct": 0.45613,
+    "wns_ns": -2.0280471209751223,
+    "power_mw": 0.002479713875800371
+  },
+  "gds": "RAM32M.gds",
+  "png": "RAM32M.png",
+  "lines": 111,
+  "created_at": "2026-06-22T14:17:37.256761+00:00",
+  "updated_at": "2026-06-22T14:33:29.613112+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 0,
+    "max_fanout": 0,
+    "hold_vio": 0,
+    "setup_wns_ns": -2.028,
+    "slow_corner_slew": 379,
+    "clean": false,
+    "failed": [
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

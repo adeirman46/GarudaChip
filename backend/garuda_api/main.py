@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import db, runner
+from . import db, runner, ips, sim
 
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "src" / "garuda_chip"))
@@ -34,6 +34,9 @@ app.add_middleware(
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["*"], allow_headers=["*"], allow_credentials=True,
 )
+# IP library + Create-IP + Chip Studio, and the Simulation workspaces
+app.include_router(ips.router)
+app.include_router(sim.router)
 
 
 @app.on_event("startup")
@@ -45,6 +48,19 @@ def _startup():
 # --- models -----------------------------------------------------------------
 class CreateChat(BaseModel):
     title: str | None = None
+    project_id: str | None = None
+
+
+class CreateProject(BaseModel):
+    name: str | None = None
+
+
+class RenameProject(BaseModel):
+    name: str
+
+
+class MoveChat(BaseModel):
+    project_id: str | None = None
 
 
 class RunOpts(BaseModel):
@@ -161,15 +177,44 @@ def knowledge_object(key: str):
                     headers={"Content-Disposition": f'inline; filename="{key.split("/")[-1]}"'})
 
 
+# --- projects (group many chats / IPs) --------------------------------------
+@app.get("/api/projects")
+def projects():
+    return {"projects": db.list_projects()}
+
+
+@app.post("/api/projects")
+def create_project(body: CreateProject):
+    return db.create_project(body.name or "New project")
+
+
+@app.patch("/api/projects/{project_id}")
+def rename_project(project_id: str, body: RenameProject):
+    db.rename_project(project_id, body.name)
+    return {"ok": True}
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str, cascade: bool = False):
+    db.delete_project(project_id, cascade=cascade)
+    return {"ok": True}
+
+
 # --- chats ------------------------------------------------------------------
 @app.get("/api/chats")
-def chats():
-    return db.list_chats()
+def chats(project_id: str | None = None):
+    return db.list_chats(project_id=project_id)
 
 
 @app.post("/api/chats")
 def create_chat(body: CreateChat):
-    return db.create_chat(body.title or "New chat")
+    return db.create_chat(body.title or "New chat", project_id=body.project_id)
+
+
+@app.post("/api/chats/{chat_id}/move")
+def move_chat(chat_id: str, body: MoveChat):
+    db.move_chat(chat_id, body.project_id)
+    return {"ok": True}
 
 
 @app.get("/api/chats/{chat_id}")

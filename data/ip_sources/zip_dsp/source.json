@@ -1,0 +1,10 @@
+{
+  "name": "zip_dsp",
+  "repo": "https://github.com/ZipCPU/dspfilters",
+  "commit": "16d7dc3b23af",
+  "category": "dsp",
+  "subtitle": "FIR / CIC / boxcar DSP filter cores",
+  "rtl_files": 19,
+  "license": "",
+  "license_head": ""
+}

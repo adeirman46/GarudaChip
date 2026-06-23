@@ -1,0 +1,10 @@
+{
+  "name": "picorv32",
+  "repo": "https://github.com/YosysHQ/picorv32",
+  "commit": "87c89acc1899",
+  "category": "core",
+  "subtitle": "Simple, well-proven RV32IMC core",
+  "rtl_files": 1,
+  "license": "",
+  "license_head": ""
+}

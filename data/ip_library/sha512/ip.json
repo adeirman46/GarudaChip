@@ -1,0 +1,75 @@
+{
+  "id": "sha512",
+  "name": "sha512",
+  "category": "crypto",
+  "subtitle": "SHA-512 hash core",
+  "source": "clone:https://github.com/secworks/sha512",
+  "top": "sha512",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "sha512_h_constants.v",
+    "sha512_w_mem.v",
+    "sha512.v",
+    "sha512_k_constants.v",
+    "sha512_core.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 1873260,
+    "core_area_um2": 1810100,
+    "cell_count": 100642,
+    "util_pct": 0.458691,
+    "wns_ns": -21.681785869280784,
+    "power_mw": 0.10177046805620193
+  },
+  "gds": "sha512.gds",
+  "png": "sha512.png",
+  "lines": 1487,
+  "created_at": "2026-06-22T08:53:30.016028+00:00",
+  "updated_at": "2026-06-23T12:59:30.674825+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 978,
+    "max_cap": 310,
+    "max_fanout": 265,
+    "hold_vio": 0,
+    "setup_wns_ns": -21.682,
+    "slow_corner_slew": 12550,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

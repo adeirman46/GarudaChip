@@ -1,0 +1,106 @@
+{
+  "id": "i2c",
+  "name": "i2c",
+  "category": "peripheral",
+  "subtitle": "I2C master/slave",
+  "source": "clone:https://github.com/alexforencich/verilog-i2c",
+  "top": "i2c_master_axil",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axil_awaddr",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "s_axil_awvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axil_wdata",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s_axil_wvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axil_bresp",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "s_axil_bready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axil_arprot",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "s_axil_arready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s_axil_rresp",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "s_axil_rready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i2c_scl_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i2c_sda_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i2c_sda_t",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "i2c_slave.v",
+    "i2c_master.v",
+    "i2c_init.v",
+    "i2c_slave_axil_master.v",
+    "axis_fifo.v",
+    "i2c_master_axil.v",
+    "i2c_single_reg.v",
+    "i2c_master_wbs_8.v",
+    "i2c_slave_wbm.v",
+    "i2c_master_wbs_16.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 394963,
+    "core_area_um2": 365782,
+    "cell_count": 17091,
+    "util_pct": 0.496225,
+    "wns_ns": -2.2280808939604864,
+    "power_mw": 0.06347539275884628
+  },
+  "gds": "i2c_master_axil.gds",
+  "png": "i2c_master_axil.png",
+  "lines": 5531,
+  "created_at": "2026-06-22T08:35:12.837765+00:00",
+  "updated_at": "2026-06-22T08:56:19.246409+00:00"
+}

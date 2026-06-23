@@ -1,0 +1,52 @@
+{
+  "id": "mem_fifo_sync",
+  "name": "Synchronous FIFO",
+  "category": "memory",
+  "subtitle": "Single-clock FIFO with full/empty flags",
+  "source": "generated",
+  "top": "fifo_sync",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wr_en",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "full",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "dout",
+      "dir": "output",
+      "width": "[DW-1:0]"
+    }
+  ],
+  "rtl": [
+    "fifo_sync.v"
+  ],
+  "tb": [
+    "fifo_sync_tb.v"
+  ],
+  "sim_status": "pass",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 62444.7,
+    "core_area_um2": 51692.6,
+    "cell_count": 2584,
+    "util_pct": 0.53461,
+    "wns_ns": 7.367827445579919,
+    "power_mw": 0.013978973962366581
+  },
+  "gds": "fifo_sync.gds",
+  "png": "fifo_sync.png",
+  "lines": 20,
+  "created_at": "2026-06-22T09:02:54.585933+00:00",
+  "updated_at": "2026-06-22T13:59:10.199920+00:00",
+  "sim_log": "\nVCD info: dumpfile design.vcd opened for output.\nPASS: sync FIFO ok"
+}

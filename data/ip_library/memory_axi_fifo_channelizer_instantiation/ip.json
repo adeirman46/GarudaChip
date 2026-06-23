@@ -1,0 +1,150 @@
+{
+  "id": "memory_axi_fifo_channelizer_instantiation",
+  "name": "AXI FIFO Channelizer Instantiation",
+  "category": "memory",
+  "subtitle": "AXI FIFO Channelizer module instantiation.",
+  "source": "faiss-dataset",
+  "top": "channelizer_xlaxififogen",
+  "ports": [
+    {
+      "name": "ce",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_aclk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "aresetn",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "axis_underflow",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "axis_overflow",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "axis_data_count",
+      "dir": "output",
+      "width": "[depth_bits-1:0]"
+    },
+    {
+      "name": "axis_prog_full_thresh",
+      "dir": "input",
+      "width": "[depth_bits-2:0]"
+    },
+    {
+      "name": "axis_prog_empty_thresh",
+      "dir": "input",
+      "width": "[depth_bits-2:0]"
+    },
+    {
+      "name": "s_axis_tdata",
+      "dir": "input",
+      "width": "[tdata_width-1:0]"
+    },
+    {
+      "name": "s_axis_tstrb",
+      "dir": "input",
+      "width": "[tstrb_width-1:0]"
+    },
+    {
+      "name": "s_axis_tkeep",
+      "dir": "input",
+      "width": "[tkeep_width-1:0]"
+    },
+    {
+      "name": "s_axis_tlast",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tid",
+      "dir": "input",
+      "width": "[tid_width-1:0]"
+    },
+    {
+      "name": "s_axis_tdest",
+      "dir": "input",
+      "width": "[tdest_width-1:0]"
+    },
+    {
+      "name": "s_axis_tuser",
+      "dir": "input",
+      "width": "[tuser_width-1:0]"
+    },
+    {
+      "name": "s_axis_tvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m_axis_tdata",
+      "dir": "output",
+      "width": "[tdata_width-1:0]"
+    },
+    {
+      "name": "m_axis_tstrb",
+      "dir": "output",
+      "width": "[tstrb_width-1:0]"
+    },
+    {
+      "name": "m_axis_tkeep",
+      "dir": "output",
+      "width": "[tkeep_width-1:0]"
+    },
+    {
+      "name": "m_axis_tlast",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m_axis_tid",
+      "dir": "output",
+      "width": "[tid_width-1:0]"
+    },
+    {
+      "name": "m_axis_tdest",
+      "dir": "output",
+      "width": "[tdest_width-1:0]"
+    },
+    {
+      "name": "m_axis_tuser",
+      "dir": "output",
+      "width": "[tuser_width-1:0]"
+    },
+    {
+      "name": "m_axis_tvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m_axis_tready",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "channelizer_xlaxififogen.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 114,
+  "created_at": "2026-06-21T14:57:13.188295+00:00",
+  "updated_at": "2026-06-22T14:34:24.032857+00:00"
+}

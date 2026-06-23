@@ -1,0 +1,75 @@
+$date
+	Mon Jun 22 16:02:54 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module sram_be_tb $end
+$var wire 32 ! dout [31:0] $end
+$var reg 4 " addr [3:0] $end
+$var reg 4 # be [3:0] $end
+$var reg 1 $ clk $end
+$var reg 32 % din [31:0] $end
+$var integer 32 & errors [31:0] $end
+$scope module dut $end
+$var wire 4 ' addr [3:0] $end
+$var wire 4 ( be [3:0] $end
+$var wire 1 $ clk $end
+$var wire 32 ) din [31:0] $end
+$var reg 32 * dout [31:0] $end
+$var integer 32 + i [31:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+$dumpvars
+bx +
+bx *
+b0 )
+b0 (
+b0 '
+b0 &
+b0 %
+0$
+b0 #
+b0 "
+bx !
+$end
+#5000
+b100 +
+1$
+#10000
+b11011110101011011011111011101111 %
+b11011110101011011011111011101111 )
+b10 "
+b10 '
+b1111 #
+b1111 (
+0$
+#15000
+b100 +
+1$
+#20000
+b1111111100000000 %
+b1111111100000000 )
+b10 #
+b10 (
+0$
+#25000
+b11011110101011011011111011101111 !
+b11011110101011011011111011101111 *
+b100 +
+1$
+#30000
+b0 #
+b0 (
+0$
+#35000
+b11011110101011011111111111101111 !
+b11011110101011011111111111101111 *
+b100 +
+1$
+#36000

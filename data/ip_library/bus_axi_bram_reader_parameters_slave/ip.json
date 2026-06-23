@@ -1,0 +1,110 @@
+{
+  "id": "bus_axi_bram_reader_parameters_slave",
+  "name": "AXI-BRAM Reader Parameters Slave",
+  "category": "bus",
+  "subtitle": "AXI-BRAM reader module with parameters, system signals, slave side, BRAM port, and logic f",
+  "source": "faiss-dataset",
+  "top": "axi_bram_reader",
+  "ports": [
+    {
+      "name": "aclk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_awaddr",
+      "dir": "input",
+      "width": "[AXI_ADDR_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axi_awready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s_axi_wvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_bresp",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "s_axi_bready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_arvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_rdata",
+      "dir": "output",
+      "width": "[AXI_DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axi_rvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "bram_porta_clk",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "bram_porta_addr",
+      "dir": "output",
+      "width": "[BRAM_ADDR_WIDTH-1:0]"
+    },
+    {
+      "name": "integer",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "axi_bram_reader.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 14051,
+    "core_area_um2": 9061.79,
+    "cell_count": 513,
+    "util_pct": 0.690891,
+    "wns_ns": 7.309037137960424,
+    "power_mw": 0.0004981933743692935
+  },
+  "gds": "axi_bram_reader.gds",
+  "png": "axi_bram_reader.png",
+  "lines": 108,
+  "created_at": "2026-06-22T14:17:36.786776+00:00",
+  "updated_at": "2026-06-22T14:30:51.544450+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 32,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 0,
+    "max_fanout": 0,
+    "hold_vio": 0,
+    "setup_wns_ns": 7.309,
+    "slow_corner_slew": 0,
+    "clean": false,
+    "failed": [
+      "synth_check"
+    ]
+  },
+  "tapeout_ready": false
+}

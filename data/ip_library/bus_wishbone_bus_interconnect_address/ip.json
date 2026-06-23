@@ -1,0 +1,277 @@
+{
+  "id": "bus_wishbone_bus_interconnect_address",
+  "name": "Wishbone Bus Interconnect Address",
+  "category": "bus",
+  "subtitle": "Wishbone bus interconnect module with address, data, and control signals.",
+  "source": "faiss-dataset",
+  "top": "conbus5x6",
+  "ports": [
+    {
+      "name": "sys_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m0_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m0_adr_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m0_sel_i",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "m0_cyc_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m0_ack_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m1_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m1_cti_i",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "m1_we_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m1_stb_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m2_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m2_adr_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m2_sel_i",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "m2_cyc_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m2_ack_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m3_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m3_cti_i",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "m3_we_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m3_stb_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m4_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m4_adr_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "m4_sel_i",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "m4_cyc_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m4_ack_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s0_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s0_cti_o",
+      "dir": "output",
+      "width": "[2:0]"
+    },
+    {
+      "name": "s0_we_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s0_stb_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s1_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s1_adr_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s1_sel_o",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "s1_cyc_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s1_ack_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s2_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s2_cti_o",
+      "dir": "output",
+      "width": "[2:0]"
+    },
+    {
+      "name": "s2_we_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s2_stb_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s3_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s3_adr_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s3_sel_o",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "s3_cyc_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s3_ack_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s4_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s4_cti_o",
+      "dir": "output",
+      "width": "[2:0]"
+    },
+    {
+      "name": "s4_we_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s4_stb_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s5_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s5_adr_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "s5_sel_o",
+      "dir": "output",
+      "width": "[3:0]"
+    },
+    {
+      "name": "s5_cyc_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s5_ack_i",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "conbus5x6.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 234,
+  "created_at": "2026-06-22T14:17:36.860453+00:00",
+  "updated_at": "2026-06-22T14:48:46.866870+00:00"
+}

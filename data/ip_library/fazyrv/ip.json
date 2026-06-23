@@ -1,0 +1,84 @@
+{
+  "id": "fazyrv",
+  "name": "fazyrv",
+  "category": "core",
+  "subtitle": "Scalable 1/2/4/8-bit-datapath RV32I core",
+  "source": "clone:https://github.com/meiniKi/FazyRV",
+  "top": "fazyrv_top",
+  "ports": [
+    {
+      "name": "clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "tirq_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_imem_stb_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "wb_imem_adr_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "wb_imem_ack_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_dmem_stb_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "wb_dmem_ack_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_dmem_dat_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "wb_dmem_dat_o",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "fazyrv_decode_mem1.sv",
+    "fazyrv_rf_lut.sv",
+    "fazyrv_top.sv",
+    "fazyrv_rf.sv",
+    "fazyrv_fadd.v",
+    "fazyrv_spm_d.sv",
+    "fazyrv_rvc.sv",
+    "fazyrv_cntrl.sv",
+    "fazyrv_shftreg.sv",
+    "fazyrv_csr.sv",
+    "fazyrv_cmp.v",
+    "fazyrv_alu.sv",
+    "fazyrv_align.sv",
+    "fazyrv_core.sv",
+    "fazyrv_pc.sv",
+    "fazyrv_spm_a.sv",
+    "fazyrv_decode.sv",
+    "fazyrv_hadd.v",
+    "fazyrv_ram_sp.sv",
+    "fazyrv_ram_dp.sv"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 4858,
+  "created_at": "2026-06-22T08:34:46.746240+00:00",
+  "updated_at": "2026-06-22T08:52:32.864325+00:00"
+}

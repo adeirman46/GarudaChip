@@ -1,0 +1,57 @@
+{
+  "id": "mem_sram_dp",
+  "name": "Dual-Port SRAM",
+  "category": "memory",
+  "subtitle": "True dual-port SRAM (two independent R/W ports)",
+  "source": "generated",
+  "top": "sram_dp",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "addr_a",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    },
+    {
+      "name": "dout_a",
+      "dir": "output",
+      "width": "[DW-1:0]"
+    },
+    {
+      "name": "addr_b",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    },
+    {
+      "name": "dout_b",
+      "dir": "output",
+      "width": "[DW-1:0]"
+    }
+  ],
+  "rtl": [
+    "sram_dp.v"
+  ],
+  "tb": [
+    "sram_dp_tb.v"
+  ],
+  "sim_status": "pass",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 887915,
+    "core_area_um2": 843457,
+    "cell_count": 43271,
+    "util_pct": 0.526534,
+    "wns_ns": -12.53440586801735,
+    "power_mw": 0.18985161185264587
+  },
+  "gds": "sram_dp.gds",
+  "png": "sram_dp.png",
+  "lines": 16,
+  "created_at": "2026-06-22T09:02:54.462244+00:00",
+  "updated_at": "2026-06-22T09:41:27.005420+00:00",
+  "sim_log": "\nVCD info: dumpfile design.vcd opened for output.\nPASS: dual-port SRAM ok"
+}

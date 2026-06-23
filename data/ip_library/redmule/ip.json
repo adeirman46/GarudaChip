@@ -1,0 +1,80 @@
+{
+  "id": "redmule",
+  "name": "redmule",
+  "category": "accelerator",
+  "subtitle": "PULP RedMulE matrix-multiply (GEMM) accelerator",
+  "source": "clone:https://github.com/pulp-platform/redmule",
+  "top": "redmule_config_fifo",
+  "ports": [
+    {
+      "name": "clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "flush_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "full_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "usage_o",
+      "dir": "output",
+      "width": "[ADDR_DEPTH-1:0]"
+    },
+    {
+      "name": "push_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "pop_i",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "redmule_tiler.sv",
+    "redmule_scheduler.sv",
+    "redmule_top.sv",
+    "redmule_streamer.sv",
+    "redmule_noncomp.sv",
+    "redmule_castout.sv",
+    "redmule_fma.sv",
+    "redmule_inst_decoder.sv",
+    "redmule_z_buffer_scm.sv",
+    "redmule_x_pad_scm.sv",
+    "redmule_row.sv",
+    "redmule_w_buffer_scm.sv",
+    "redmule_target_decoder.sv",
+    "redmule_memory_scheduler.sv",
+    "redmule_x_buffer_scm.sv",
+    "redmule_ctrl.sv",
+    "redmule_z_buffer.sv",
+    "redmule_regif_pkg.sv",
+    "redmule_mux.sv",
+    "redmule_castin.sv",
+    "redmule_x_buffer.sv",
+    "redmule_engine.sv",
+    "redmule_config_fifo.sv",
+    "redmule_mm_wrap.sv",
+    "redmule_xif_wrap.sv",
+    "redmule_w_buffer.sv",
+    "redmule_regif.sv",
+    "redmule_ce.sv",
+    "redmule_pkg.sv"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 8540,
+  "created_at": "2026-06-22T14:24:30.923047+00:00",
+  "updated_at": "2026-06-22T14:24:30.923059+00:00"
+}

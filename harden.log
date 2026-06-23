@@ -1,0 +1,1886 @@
+hardening 20 IP(s): sha256, sha512, sha3, chacha, poly1305, blake2s, uart16550, verilog_uart, i2c, wishbone_interconnect, cic, zip_dsp, zip_fft, cnn, fft, fazyrv, cv32e40p, ibex, redmule, ne16
+
+── harden sha256 (top=sha256) …
+   [19:36:28] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [19:36:28] INFO     Starting…                                  sequential.py:339
+   [19:36:28] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [19:36:28] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [19:36:29] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [19:36:29] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [19:36:29] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [19:36:29] INFO     Check for Lint errors clear.                  checker.py:131
+   [19:36:29] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [19:36:29] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [19:36:29] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   No latch inferred for signal `\sha256.\tmp_error' from process
+   [19:36:29] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [19:36:29] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   No latch inferred for signal `\sha256.\tmp_error' from process
+   Successfully finished Verilog frontend.
+   119.5. Finished fast OPT passes.
+   123.9. Finished fast OPT passes. (There is nothing left to do.)
+   ABC: Parsing finished successfully.  Parsing time =     0.08 sec
+   ABC: Error: The network is combinational.
+   [19:36:40] VERBOSE  Running 'Checker.YosysUnmappedCells' at         step.py:1138
+   [19:36:40] VERBOSE  Running 'Checker.YosysSynthChecks' at           step.py:1138
+   [19:36:40] INFO     Check for Yosys check errors clear.           checker.py:131
+   [19:36:40] VERBOSE  Running 'Checker.NetlistAssignStatements' at    step.py:1138
+   [19:36:40] VERBOSE  Running 'OpenROAD.CheckSDCFiles' at             step.py:1138
+                       fallback SDC for OpenROAD PnR steps.
+                       generic fallback SDC for OpenROAD PnR steps.
+   [19:36:40] VERBOSE  Running 'OpenROAD.CheckMacroInstances' at       step.py:1138
+   [19:36:40] VERBOSE  Running 'OpenROAD.STAPrePNR' at                 step.py:1138
+   [19:36:40] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [19:36:40] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [19:36:40] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:40] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [19:36:40] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:40] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:44] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [19:36:44] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [19:36:45] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [19:36:45] VERBOSE  Running 'OpenROAD.Floorplan' at                 step.py:1138
+   [19:36:45] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:46] VERBOSE  Running 'OpenROAD.DumpRCValues' at              step.py:1138
+   [19:36:46] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file:
+   [19:36:46] VERBOSE  Running 'Odb.CheckMacroAntennaProperties' at    step.py:1138
+   [19:36:46] VERBOSE  Running 'Odb.SetPowerConnections' at            step.py:1138
+   [19:36:46] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:47] VERBOSE  Running 'Odb.ManualMacroPlacement' at           step.py:1138
+   [19:36:47] VERBOSE  Running 'OpenROAD.CutRows' at                   step.py:1138
+   [19:36:47] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:48] VERBOSE  Running 'OpenROAD.TapEndcapInsertion' at        step.py:1138
+   [19:36:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:49] VERBOSE  Running 'Odb.AddPDNObstructions' at             step.py:1138
+   [19:36:49] VERBOSE  Running 'OpenROAD.GeneratePDN' at               step.py:1138
+   [19:36:49] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:50] VERBOSE  Running 'Odb.RemovePDNObstructions' at          step.py:1138
+   [19:36:50] VERBOSE  Running 'Odb.AddRoutingObstructions' at         step.py:1138
+   [19:36:50] VERBOSE  Running 'OpenROAD.GlobalPlacementSkipIO' at     step.py:1138
+   [19:36:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-1001] Global placement finished at iteration 419
+   [19:36:53] VERBOSE  Running 'OpenROAD.IOPlacement' at               step.py:1138
+   [19:36:53] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:54] VERBOSE  Running 'Odb.CustomIOPlacement' at              step.py:1138
+   [19:36:54] VERBOSE  Running 'Odb.ApplyDEFTemplate' at               step.py:1138
+   [19:36:54] VERBOSE  Running 'OpenROAD.GlobalPlacement' at           step.py:1138
+   [19:36:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-0090] Routability finished. Target routing congestion achieved
+   [INFO GPL-1001] Global placement finished at iteration 441
+   [19:36:58] VERBOSE  Running 'Odb.WriteVerilogHeader' at             step.py:1138
+   [19:36:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:36:58] VERBOSE  Running 'Checker.PowerGridViolations' at        step.py:1138
+   [19:36:58] VERBOSE  Running 'OpenROAD.STAMidPNR' at                 step.py:1138
+   [19:36:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:37:05] VERBOSE  Running 'OpenROAD.RepairDesignPostGPL' at       step.py:1138
+   [19:37:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:37:27] VERBOSE  Running 'Odb.ManualGlobalPlacement' at          step.py:1138
+   [19:37:27] VERBOSE  Running 'OpenROAD.DetailedPlacement' at         step.py:1138
+   [19:37:27] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:37:28] VERBOSE  Running 'OpenROAD.CTS' at                       step.py:1138
+   [19:37:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:37:50] VERBOSE  Running 'OpenROAD.STAMidPNR-1' at               step.py:1138
+   [19:37:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:37:55] VERBOSE  Running 'OpenROAD.ResizerTimingPostCTS' at      step.py:1138
+   [19:37:55] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:38:24] VERBOSE  Running 'OpenROAD.STAMidPNR-2' at               step.py:1138
+   [19:38:24] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:38:29] VERBOSE  Running 'OpenROAD.GlobalRouting' at             step.py:1138
+   [19:38:29] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GRT-0199] Via filling finished.
+   [19:38:32] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [19:38:32] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:38:39] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:38:39] INFO     Skipping step 'Repair Design (Post-Global  sequential.py:370
+   [19:38:39] VERBOSE  Running 'Odb.DiodesOnPorts' at                  step.py:1138
+   [19:38:39] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:38:39] INFO     Skipping step 'Heuristic Diode Insertion'… sequential.py:370
+   [19:38:39] VERBOSE  Running 'OpenROAD.RepairAntennas' at            step.py:1138
+   [19:38:39] VERBOSE  Running 'OpenROAD.DiodeInsertion' at            step.py:1138
+   [19:38:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:39:05] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [19:39:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:39:12] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:39:12] INFO     Skipping step 'Resizer Timing              sequential.py:370
+   [19:39:12] VERBOSE  Running 'OpenROAD.STAMidPNR-3' at               step.py:1138
+   [19:39:12] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:39:18] VERBOSE  Running 'OpenROAD.DetailedRouting' at           step.py:1138
+   [19:39:18] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO DRT-0176] GCELLGRID X 0 DO 112 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 115 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 112 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 115 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 112 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 115 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 112 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 115 STEP 16800 ;
+   [19:41:04] VERBOSE  Running 'Odb.RemoveRoutingObstructions' at      step.py:1138
+   [19:41:04] VERBOSE  Running 'OpenROAD.CheckAntennas-1' at           step.py:1138
+   [19:41:04] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:08] VERBOSE  Running 'Checker.TrDRC' at                      step.py:1138
+   [19:41:08] INFO     Check for Routing DRC errors clear.           checker.py:131
+   [19:41:08] VERBOSE  Running 'Odb.ReportDisconnectedPins' at         step.py:1138
+   [19:41:08] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:10] VERBOSE  Running 'Checker.DisconnectedPins' at           step.py:1138
+   [19:41:10] VERBOSE  Running 'Odb.ReportWireLength' at               step.py:1138
+   [19:41:10] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:10] VERBOSE  Running 'Checker.WireLength' at                 step.py:1138
+   [19:41:10] VERBOSE  Running 'OpenROAD.FillInsertion' at             step.py:1138
+   [19:41:10] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:12] VERBOSE  Running 'Odb.CellFrequencyTables' at            step.py:1138
+   [19:41:12] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:12] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:13] VERBOSE  Running 'OpenROAD.RCX' at                       step.py:1138
+   [19:41:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] INFO     Finished RCX for corners matching min_*.    openroad.py:2154
+   [19:41:16] INFO     Finished RCX for corners matching max_*.    openroad.py:2154
+   [19:41:16] INFO     Finished RCX for corners matching nom_*.    openroad.py:2154
+   [19:41:16] VERBOSE  Running 'OpenROAD.STAPostPNR' at                step.py:1138
+   [19:41:16] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [19:41:16] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [19:41:16] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] INFO     Starting STA for the min_tt_025C_5v00 timing openroad.py:747
+   [19:41:16] INFO     Starting STA for the min_ss_125C_4v50 timing openroad.py:747
+   [19:41:16] INFO     Starting STA for the min_ff_n40C_5v50 timing openroad.py:747
+   [19:41:16] INFO     Starting STA for the max_tt_025C_5v00 timing openroad.py:747
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] INFO     Starting STA for the max_ss_125C_4v50 timing openroad.py:747
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] INFO     Starting STA for the max_ff_n40C_5v50 timing openroad.py:747
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the min_ss_125C_4v50 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the max_ss_125C_4v50 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [19:41:28] INFO     Finished STA for the max_tt_025C_5v00 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:28] INFO     Finished STA for the min_ff_n40C_5v50 timing openroad.py:762
+   [19:41:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:29] INFO     Finished STA for the min_tt_025C_5v00 timing openroad.py:762
+   [19:41:29] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:30] INFO     Finished STA for the max_ff_n40C_5v50 timing openroad.py:762
+   [19:41:30] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:41:30] VERBOSE  Running 'OpenROAD.IRDropReport' at              step.py:1138
+   [19:41:31] VERBOSE  Logging subprocess to                           step.py:1338
+   ─────────────────────────── GDSII Stream Out (Magic) ───────────────────────────
+   [19:41:50] VERBOSE  Running 'Magic.StreamOut' at                    step.py:1138
+   [19:41:50] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Note:  cell (UNNAMED) already existed before reading GDS.
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   [INFO] GDS Write Complete
+   ────────────────────────── GDSII Stream Out (KLayout) ──────────────────────────
+   [19:41:57] VERBOSE  Running 'KLayout.StreamOut' at                  step.py:1138
+   [19:41:57] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO] Merging GDS files…
+   [INFO] Checking for missing GDS…
+   [INFO] All LEF cells have matching GDS cells.
+   [INFO] Writing out GDS
+   out/sha256.klayout.gds'…
+   [19:41:59] VERBOSE  Running 'KLayout.Render' at                     step.py:1138
+   [19:41:59] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:42:01] VERBOSE  Running 'Magic.WriteLEF' at                     step.py:1138
+   [19:42:01] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Warning:  cell (UNNAMED) already existed before reading GDS!
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   [19:42:07] VERBOSE  Running 'Odb.CheckDesignAntennaProperties' at   step.py:1138
+   [19:42:07] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file: /tmp/tmp8yx64h3h
+   [19:42:07] VERBOSE  Running 'KLayout.XOR' at                        step.py:1138
+   [19:42:07] VERBOSE  Logging subprocess to                           step.py:1338
+   /sha256.magic.gds ..
+   ut/sha256.klayout.gds ..
+   /sha256.magic.gds
+   ut/sha256.klayout.gds
+   [19:42:13] VERBOSE  Running 'Checker.XOR' at                        step.py:1138
+   [19:42:13] VERBOSE  Running 'Magic.DRC' at                          step.py:1138
+   [19:42:13] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   Library written using GDS-II Release 6.0
+   CIF file read error: Warning:  Cell sha256 boundary was redefined.
+   No errors found.
+   [INFO] Saving mag view with DRC errors
+   [19:42:54] VERBOSE  Running 'KLayout.DRC' at                        step.py:1138
+                       step will be skipped.
+   [19:42:54] VERBOSE  Running 'Checker.MagicDRC' at                   step.py:1138
+   [19:42:54] INFO     Check for Magic DRC errors clear.             checker.py:131
+   [19:42:54] VERBOSE  Running 'Checker.KLayoutDRC' at                 step.py:1138
+   [19:42:54] WARNING  The KLayout DRC errors metric was not found.  checker.py:133
+                       Are you sure the relevant step was run?
+   [19:42:54] VERBOSE  Running 'Magic.SpiceExtraction' at              step.py:1138
+   [19:42:54] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   exttospice finished.
+   [19:43:06] VERBOSE  Running 'Checker.IllegalOverlap' at             step.py:1138
+   [19:43:06] INFO     Check for Magic Illegal Overlap errors clear. checker.py:131
+   [19:43:06] VERBOSE  Running 'Netgen.LVS' at                         step.py:1138
+   [19:43:06] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────── Layout vs. Schematic Error Checker ──────────────────────
+   [19:43:10] VERBOSE  Running 'Checker.LVS' at                        step.py:1138
+   [19:43:10] INFO     Check for LVS errors clear.                   checker.py:131
+   [19:43:10] INFO     Gating variable for step 'Yosys.EQY' set   sequential.py:362
+                       to 'False'- the step will be skipped.
+   [19:43:10] INFO     Skipping step 'Equivalence Check'…         sequential.py:370
+   [19:43:10] VERBOSE  Running 'Checker.SetupViolations' at            step.py:1138
+   [19:43:10] VERBOSE  Running 'Checker.HoldViolations' at             step.py:1138
+   [19:43:10] VERBOSE  Running 'Checker.MaxSlewViolations' at          step.py:1138
+   [19:43:10] VERBOSE  Running 'Checker.MaxCapViolations' at           step.py:1138
+   [19:43:10] VERBOSE  Running 'Misc.ReportManufacturability' at       step.py:1138
+   [19:43:10] WARNING  klayout__drc_error__count not reported.          misc.py:102
+                       PnR steps.
+                       OpenROAD PnR steps.
+                       gf180mcuD PDK. This step will be skipped.
+   [19:43:10] WARNING  [Checker.KLayoutDRC] The KLayout DRC errors      flow.py:701
+                       step was run?
+                       klayout__drc_error__count not reported.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 10423.02it/s]
+   ⚠️  GDS produced but NOT sign-off clean (violations: max_slew, max_cap, max_fanout, setup_timing)
+
+── harden sha512 (top=sha512) …
+   [19:43:25] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [19:43:25] INFO     Starting…                                  sequential.py:339
+   [19:43:25] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [19:43:25] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [19:43:25] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [19:43:25] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [19:43:25] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [19:43:25] INFO     Check for Lint errors clear.                  checker.py:131
+   [19:43:25] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [19:43:25] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [19:43:25] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+        2/40: $4\tmp_error[0:0]
+       14/40: $3\tmp_error[0:0]
+       17/40: $2\tmp_error[0:0]
+       31/40: $1\tmp_error[0:0]
+   No latch inferred for signal `\sha512.\tmp_error' from process
+   [19:43:26] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [19:43:26] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+        2/40: $4\tmp_error[0:0]
+       14/40: $3\tmp_error[0:0]
+       17/40: $2\tmp_error[0:0]
+       31/40: $1\tmp_error[0:0]
+   No latch inferred for signal `\sha512.\tmp_error' from process
+   Successfully finished Verilog frontend.
+   120.5. Finished fast OPT passes.
+   124.9. Finished fast OPT passes. (There is nothing left to do.)
+   ABC: Parsing finished successfully.  Parsing time =     0.08 sec
+   ABC: Error: The network is combinational.
+   [19:43:56] VERBOSE  Running 'Checker.YosysUnmappedCells' at         step.py:1138
+   [19:43:56] VERBOSE  Running 'Checker.YosysSynthChecks' at           step.py:1138
+   [19:43:56] INFO     Check for Yosys check errors clear.           checker.py:131
+   [19:43:56] VERBOSE  Running 'Checker.NetlistAssignStatements' at    step.py:1138
+   [19:43:56] VERBOSE  Running 'OpenROAD.CheckSDCFiles' at             step.py:1138
+                       fallback SDC for OpenROAD PnR steps.
+                       generic fallback SDC for OpenROAD PnR steps.
+   [19:43:56] VERBOSE  Running 'OpenROAD.CheckMacroInstances' at       step.py:1138
+   [19:43:56] VERBOSE  Running 'OpenROAD.STAPrePNR' at                 step.py:1138
+   [19:43:56] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [19:43:56] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [19:43:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:43:56] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [19:43:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:43:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:08] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [19:44:08] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [19:44:08] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [19:44:08] VERBOSE  Running 'OpenROAD.Floorplan' at                 step.py:1138
+   [19:44:08] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:10] VERBOSE  Running 'OpenROAD.DumpRCValues' at              step.py:1138
+   [19:44:10] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file:
+   [19:44:11] VERBOSE  Running 'Odb.CheckMacroAntennaProperties' at    step.py:1138
+   [19:44:11] VERBOSE  Running 'Odb.SetPowerConnections' at            step.py:1138
+   [19:44:11] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:12] VERBOSE  Running 'Odb.ManualMacroPlacement' at           step.py:1138
+   [19:44:12] VERBOSE  Running 'OpenROAD.CutRows' at                   step.py:1138
+   [19:44:12] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:13] VERBOSE  Running 'OpenROAD.TapEndcapInsertion' at        step.py:1138
+   [19:44:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:14] VERBOSE  Running 'Odb.AddPDNObstructions' at             step.py:1138
+   [19:44:14] VERBOSE  Running 'OpenROAD.GeneratePDN' at               step.py:1138
+   [19:44:14] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:17] VERBOSE  Running 'Odb.RemovePDNObstructions' at          step.py:1138
+   [19:44:17] VERBOSE  Running 'Odb.AddRoutingObstructions' at         step.py:1138
+   [19:44:17] VERBOSE  Running 'OpenROAD.GlobalPlacementSkipIO' at     step.py:1138
+   [19:44:17] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-1001] Global placement finished at iteration 465
+   [19:44:23] VERBOSE  Running 'OpenROAD.IOPlacement' at               step.py:1138
+   [19:44:23] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:24] VERBOSE  Running 'Odb.CustomIOPlacement' at              step.py:1138
+   [19:44:24] VERBOSE  Running 'Odb.ApplyDEFTemplate' at               step.py:1138
+   [19:44:24] VERBOSE  Running 'OpenROAD.GlobalPlacement' at           step.py:1138
+   [19:44:24] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-0090] Routability finished. Target routing congestion achieved
+   [INFO GPL-1001] Global placement finished at iteration 488
+   [19:44:33] VERBOSE  Running 'Odb.WriteVerilogHeader' at             step.py:1138
+   [19:44:33] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:34] VERBOSE  Running 'Checker.PowerGridViolations' at        step.py:1138
+   [19:44:34] VERBOSE  Running 'OpenROAD.STAMidPNR' at                 step.py:1138
+   [19:44:34] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:44:50] VERBOSE  Running 'OpenROAD.RepairDesignPostGPL' at       step.py:1138
+   [19:44:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:45:36] VERBOSE  Running 'Odb.ManualGlobalPlacement' at          step.py:1138
+   [19:45:36] VERBOSE  Running 'OpenROAD.DetailedPlacement' at         step.py:1138
+   [19:45:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:45:38] VERBOSE  Running 'OpenROAD.CTS' at                       step.py:1138
+   [19:45:38] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:46:15] VERBOSE  Running 'OpenROAD.STAMidPNR-1' at               step.py:1138
+   [19:46:15] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:46:29] VERBOSE  Running 'OpenROAD.ResizerTimingPostCTS' at      step.py:1138
+   [19:46:29] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:48:57] VERBOSE  Running 'OpenROAD.STAMidPNR-2' at               step.py:1138
+   [19:48:57] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:49:10] VERBOSE  Running 'OpenROAD.GlobalRouting' at             step.py:1138
+   [19:49:10] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GRT-0199] Via filling finished.
+   [19:49:15] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [19:49:15] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:49:30] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:49:30] INFO     Skipping step 'Repair Design (Post-Global  sequential.py:370
+   [19:49:30] VERBOSE  Running 'Odb.DiodesOnPorts' at                  step.py:1138
+   [19:49:30] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:49:30] INFO     Skipping step 'Heuristic Diode Insertion'… sequential.py:370
+   [19:49:30] VERBOSE  Running 'OpenROAD.RepairAntennas' at            step.py:1138
+   [19:49:30] VERBOSE  Running 'OpenROAD.DiodeInsertion' at            step.py:1138
+   [19:49:30] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:50:26] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [19:50:26] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:50:40] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [19:50:40] INFO     Skipping step 'Resizer Timing              sequential.py:370
+   [19:50:40] VERBOSE  Running 'OpenROAD.STAMidPNR-3' at               step.py:1138
+   [19:50:40] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:50:55] VERBOSE  Running 'OpenROAD.DetailedRouting' at           step.py:1138
+   [19:50:55] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO DRT-0176] GCELLGRID X 0 DO 161 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 164 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 161 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 164 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 161 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 164 STEP 16800 ;
+   [19:54:39] VERBOSE  Running 'Odb.RemoveRoutingObstructions' at      step.py:1138
+   [19:54:39] VERBOSE  Running 'OpenROAD.CheckAntennas-1' at           step.py:1138
+   [19:54:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:48] VERBOSE  Running 'Checker.TrDRC' at                      step.py:1138
+   [19:54:48] INFO     Check for Routing DRC errors clear.           checker.py:131
+   [19:54:48] VERBOSE  Running 'Odb.ReportDisconnectedPins' at         step.py:1138
+   [19:54:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:50] VERBOSE  Running 'Checker.DisconnectedPins' at           step.py:1138
+   [19:54:50] VERBOSE  Running 'Odb.ReportWireLength' at               step.py:1138
+   [19:54:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:51] VERBOSE  Running 'Checker.WireLength' at                 step.py:1138
+   [19:54:51] VERBOSE  Running 'OpenROAD.FillInsertion' at             step.py:1138
+   [19:54:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:54] VERBOSE  Running 'Odb.CellFrequencyTables' at            step.py:1138
+   [19:54:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:56] VERBOSE  Running 'OpenROAD.RCX' at                       step.py:1138
+   [19:54:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:54:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] INFO     Finished RCX for corners matching nom_*.    openroad.py:2154
+   [19:55:02] INFO     Finished RCX for corners matching max_*.    openroad.py:2154
+   [19:55:02] INFO     Finished RCX for corners matching min_*.    openroad.py:2154
+   [19:55:02] VERBOSE  Running 'OpenROAD.STAPostPNR' at                step.py:1138
+   [19:55:02] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [19:55:02] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [19:55:02] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [19:55:02] INFO     Starting STA for the min_tt_025C_5v00 timing openroad.py:747
+   [19:55:02] INFO     Starting STA for the min_ss_125C_4v50 timing openroad.py:747
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] INFO     Starting STA for the min_ff_n40C_5v50 timing openroad.py:747
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] INFO     Starting STA for the max_tt_025C_5v00 timing openroad.py:747
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] INFO     Starting STA for the max_ss_125C_4v50 timing openroad.py:747
+   [19:55:02] INFO     Starting STA for the max_ff_n40C_5v50 timing openroad.py:747
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:36] INFO     Finished STA for the min_tt_025C_5v00 timing openroad.py:762
+   [19:55:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:36] INFO     Finished STA for the max_ff_n40C_5v50 timing openroad.py:762
+   [19:55:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:36] INFO     Finished STA for the max_tt_025C_5v00 timing openroad.py:762
+   [19:55:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:36] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [19:55:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:36] INFO     Finished STA for the min_ss_125C_4v50 timing openroad.py:762
+   [19:55:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:37] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [19:55:37] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:37] INFO     Finished STA for the max_ss_125C_4v50 timing openroad.py:762
+   [19:55:37] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:41] INFO     Finished STA for the min_ff_n40C_5v50 timing openroad.py:762
+   [19:55:41] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:41] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [19:55:41] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:55:42] VERBOSE  Running 'OpenROAD.IRDropReport' at              step.py:1138
+   [19:55:42] VERBOSE  Logging subprocess to                           step.py:1338
+   ─────────────────────────── GDSII Stream Out (Magic) ───────────────────────────
+   [19:56:29] VERBOSE  Running 'Magic.StreamOut' at                    step.py:1138
+   [19:56:29] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Note:  cell (UNNAMED) already existed before reading GDS.
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   [INFO] GDS Write Complete
+   ────────────────────────── GDSII Stream Out (KLayout) ──────────────────────────
+   [19:56:51] VERBOSE  Running 'KLayout.StreamOut' at                  step.py:1138
+   [19:56:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO] Merging GDS files…
+   [INFO] Checking for missing GDS…
+   [INFO] All LEF cells have matching GDS cells.
+   [INFO] Writing out GDS
+   out/sha512.klayout.gds'…
+   [19:56:53] VERBOSE  Running 'KLayout.Render' at                     step.py:1138
+   [19:56:53] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:56:55] VERBOSE  Running 'Magic.WriteLEF' at                     step.py:1138
+   [19:56:55] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Warning:  cell (UNNAMED) already existed before reading GDS!
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   [19:57:15] VERBOSE  Running 'Odb.CheckDesignAntennaProperties' at   step.py:1138
+   [19:57:15] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file: /tmp/tmpxzorpcnj
+   [19:57:16] VERBOSE  Running 'KLayout.XOR' at                        step.py:1138
+   [19:57:16] VERBOSE  Logging subprocess to                           step.py:1338
+   /sha512.magic.gds ..
+   ut/sha512.klayout.gds ..
+   /sha512.magic.gds
+   ut/sha512.klayout.gds
+   [19:57:24] VERBOSE  Running 'Checker.XOR' at                        step.py:1138
+   [19:57:24] VERBOSE  Running 'Magic.DRC' at                          step.py:1138
+   [19:57:24] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   Library written using GDS-II Release 6.0
+   CIF file read error: Warning:  Cell sha512 boundary was redefined.
+   No errors found.
+   [INFO] Saving mag view with DRC errors
+   [19:58:51] VERBOSE  Running 'KLayout.DRC' at                        step.py:1138
+                       step will be skipped.
+   [19:58:51] VERBOSE  Running 'Checker.MagicDRC' at                   step.py:1138
+   [19:58:51] INFO     Check for Magic DRC errors clear.             checker.py:131
+   [19:58:51] VERBOSE  Running 'Checker.KLayoutDRC' at                 step.py:1138
+   [19:58:51] WARNING  The KLayout DRC errors metric was not found.  checker.py:133
+                       Are you sure the relevant step was run?
+   [19:58:51] VERBOSE  Running 'Magic.SpiceExtraction' at              step.py:1138
+   [19:58:51] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   exttospice finished.
+   [19:59:22] VERBOSE  Running 'Checker.IllegalOverlap' at             step.py:1138
+   [19:59:22] INFO     Check for Magic Illegal Overlap errors clear. checker.py:131
+   [19:59:22] VERBOSE  Running 'Netgen.LVS' at                         step.py:1138
+   [19:59:22] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────── Layout vs. Schematic Error Checker ──────────────────────
+   [19:59:30] VERBOSE  Running 'Checker.LVS' at                        step.py:1138
+   [19:59:30] INFO     Check for LVS errors clear.                   checker.py:131
+   [19:59:30] INFO     Gating variable for step 'Yosys.EQY' set   sequential.py:362
+                       to 'False'- the step will be skipped.
+   [19:59:30] INFO     Skipping step 'Equivalence Check'…         sequential.py:370
+   [19:59:30] VERBOSE  Running 'Checker.SetupViolations' at            step.py:1138
+   [19:59:30] VERBOSE  Running 'Checker.HoldViolations' at             step.py:1138
+   [19:59:30] VERBOSE  Running 'Checker.MaxSlewViolations' at          step.py:1138
+   [19:59:30] VERBOSE  Running 'Checker.MaxCapViolations' at           step.py:1138
+   [19:59:30] VERBOSE  Running 'Misc.ReportManufacturability' at       step.py:1138
+   [19:59:30] WARNING  klayout__drc_error__count not reported.          misc.py:102
+                       PnR steps.
+                       OpenROAD PnR steps.
+                       gf180mcuD PDK. This step will be skipped.
+   [19:59:30] WARNING  [Checker.KLayoutDRC] The KLayout DRC errors      flow.py:701
+                       step was run?
+                       klayout__drc_error__count not reported.
+   ⚠️  GDS produced but NOT sign-off clean (violations: max_slew, max_cap, max_fanout, setup_timing)
+
+── harden sha3 (top=sha3) …
+   [19:59:31] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [19:59:31] INFO     Starting…                                  sequential.py:339
+   [19:59:31] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [19:59:31] VERBOSE  Logging subprocess to                           step.py:1338
+   is not used: 'STATUS_ERROR_BIT'
+      70 |   localparam STATUS_ERROR_BIT = 2;
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [19:59:32] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [19:59:32] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [19:59:32] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [19:59:32] INFO     Check for Lint errors clear.                  checker.py:131
+   [19:59:32] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [19:59:32] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [19:59:32] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   [19:59:32] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [19:59:32] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   132.5. Finished fast OPT passes.
+   136.9. Finished fast OPT passes. (There is nothing left to do.)
+   ABC: Parsing finished successfully.  Parsing time =     0.08 sec
+   ABC: Error: The network is combinational.
+   [19:59:44] VERBOSE  Running 'Checker.YosysUnmappedCells' at         step.py:1138
+   [19:59:44] VERBOSE  Running 'Checker.YosysSynthChecks' at           step.py:1138
+   [19:59:44] WARNING  640 Yosys check errors found.                 checker.py:122
+   [19:59:44] VERBOSE  Running 'Checker.NetlistAssignStatements' at    step.py:1138
+   [19:59:44] VERBOSE  Running 'OpenROAD.CheckSDCFiles' at             step.py:1138
+                       fallback SDC for OpenROAD PnR steps.
+                       generic fallback SDC for OpenROAD PnR steps.
+   [19:59:44] VERBOSE  Running 'OpenROAD.CheckMacroInstances' at       step.py:1138
+   [19:59:44] VERBOSE  Running 'OpenROAD.STAPrePNR' at                 step.py:1138
+   [19:59:44] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [19:59:44] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [19:59:44] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:44] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [19:59:44] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:44] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:49] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [19:59:49] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [19:59:49] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [19:59:49] VERBOSE  Running 'OpenROAD.Floorplan' at                 step.py:1138
+   [19:59:49] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:51] VERBOSE  Running 'OpenROAD.DumpRCValues' at              step.py:1138
+   [19:59:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file:
+   [19:59:51] VERBOSE  Running 'Odb.CheckMacroAntennaProperties' at    step.py:1138
+   [19:59:51] VERBOSE  Running 'Odb.SetPowerConnections' at            step.py:1138
+   [19:59:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:52] VERBOSE  Running 'Odb.ManualMacroPlacement' at           step.py:1138
+   [19:59:52] VERBOSE  Running 'OpenROAD.CutRows' at                   step.py:1138
+   [19:59:52] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:53] VERBOSE  Running 'OpenROAD.TapEndcapInsertion' at        step.py:1138
+   [19:59:53] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:54] VERBOSE  Running 'Odb.AddPDNObstructions' at             step.py:1138
+   [19:59:54] VERBOSE  Running 'OpenROAD.GeneratePDN' at               step.py:1138
+   [19:59:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [19:59:56] VERBOSE  Running 'Odb.RemovePDNObstructions' at          step.py:1138
+   [19:59:56] VERBOSE  Running 'Odb.AddRoutingObstructions' at         step.py:1138
+   [19:59:56] VERBOSE  Running 'OpenROAD.GlobalPlacementSkipIO' at     step.py:1138
+   [19:59:56] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-1001] Global placement finished at iteration 422
+   [20:00:00] VERBOSE  Running 'OpenROAD.IOPlacement' at               step.py:1138
+   [20:00:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:00:01] VERBOSE  Running 'Odb.CustomIOPlacement' at              step.py:1138
+   [20:00:01] VERBOSE  Running 'Odb.ApplyDEFTemplate' at               step.py:1138
+   [20:00:01] VERBOSE  Running 'OpenROAD.GlobalPlacement' at           step.py:1138
+   [20:00:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-0090] Routability finished. Target routing congestion achieved
+   [INFO GPL-1001] Global placement finished at iteration 450
+   [20:00:05] VERBOSE  Running 'Odb.WriteVerilogHeader' at             step.py:1138
+   [20:00:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:00:06] VERBOSE  Running 'Checker.PowerGridViolations' at        step.py:1138
+   [20:00:06] VERBOSE  Running 'OpenROAD.STAMidPNR' at                 step.py:1138
+   [20:00:06] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:00:13] VERBOSE  Running 'OpenROAD.RepairDesignPostGPL' at       step.py:1138
+   [20:00:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:00:41] VERBOSE  Running 'Odb.ManualGlobalPlacement' at          step.py:1138
+   [20:00:41] VERBOSE  Running 'OpenROAD.DetailedPlacement' at         step.py:1138
+   [20:00:41] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:00:43] VERBOSE  Running 'OpenROAD.CTS' at                       step.py:1138
+   [20:00:43] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:01:09] VERBOSE  Running 'OpenROAD.STAMidPNR-1' at               step.py:1138
+   [20:01:09] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:01:14] VERBOSE  Running 'OpenROAD.ResizerTimingPostCTS' at      step.py:1138
+   [20:01:14] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:01:47] VERBOSE  Running 'OpenROAD.STAMidPNR-2' at               step.py:1138
+   [20:01:47] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:01:52] VERBOSE  Running 'OpenROAD.GlobalRouting' at             step.py:1138
+   [20:01:52] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GRT-0199] Via filling finished.
+   [20:01:55] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:01:55] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:02:04] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:02:04] INFO     Skipping step 'Repair Design (Post-Global  sequential.py:370
+   [20:02:04] VERBOSE  Running 'Odb.DiodesOnPorts' at                  step.py:1138
+   [20:02:04] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:02:04] INFO     Skipping step 'Heuristic Diode Insertion'… sequential.py:370
+   [20:02:04] VERBOSE  Running 'OpenROAD.RepairAntennas' at            step.py:1138
+   [20:02:04] VERBOSE  Running 'OpenROAD.DiodeInsertion' at            step.py:1138
+   [20:02:04] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:02:39] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:02:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:02:48] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:02:48] INFO     Skipping step 'Resizer Timing              sequential.py:370
+   [20:02:48] VERBOSE  Running 'OpenROAD.STAMidPNR-3' at               step.py:1138
+   [20:02:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:02:54] VERBOSE  Running 'OpenROAD.DetailedRouting' at           step.py:1138
+   [20:02:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO DRT-0176] GCELLGRID X 0 DO 126 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 128 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 126 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 128 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 126 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 128 STEP 16800 ;
+   [20:04:50] VERBOSE  Running 'Odb.RemoveRoutingObstructions' at      step.py:1138
+   [20:04:50] VERBOSE  Running 'OpenROAD.CheckAntennas-1' at           step.py:1138
+   [20:04:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:04:55] VERBOSE  Running 'Checker.TrDRC' at                      step.py:1138
+   [20:04:55] INFO     Check for Routing DRC errors clear.           checker.py:131
+   [20:04:55] VERBOSE  Running 'Odb.ReportDisconnectedPins' at         step.py:1138
+   [20:04:55] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:04:57] VERBOSE  Running 'Checker.DisconnectedPins' at           step.py:1138
+   [20:04:57] VERBOSE  Running 'Odb.ReportWireLength' at               step.py:1138
+   [20:04:57] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:04:58] VERBOSE  Running 'Checker.WireLength' at                 step.py:1138
+   [20:04:58] VERBOSE  Running 'OpenROAD.FillInsertion' at             step.py:1138
+   [20:04:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:04:59] VERBOSE  Running 'Odb.CellFrequencyTables' at            step.py:1138
+   [20:04:59] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:01] VERBOSE  Running 'OpenROAD.RCX' at                       step.py:1138
+   [20:05:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:04] INFO     Finished RCX for corners matching nom_*.    openroad.py:2154
+   [20:05:04] INFO     Finished RCX for corners matching min_*.    openroad.py:2154
+   [20:05:04] INFO     Finished RCX for corners matching max_*.    openroad.py:2154
+   [20:05:04] VERBOSE  Running 'OpenROAD.STAPostPNR' at                step.py:1138
+   [20:05:05] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [20:05:05] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [20:05:05] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [20:05:05] INFO     Starting STA for the min_tt_025C_5v00 timing openroad.py:747
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] INFO     Starting STA for the min_ss_125C_4v50 timing openroad.py:747
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] INFO     Starting STA for the min_ff_n40C_5v50 timing openroad.py:747
+   [20:05:05] INFO     Starting STA for the max_tt_025C_5v00 timing openroad.py:747
+   [20:05:05] INFO     Starting STA for the max_ss_125C_4v50 timing openroad.py:747
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] INFO     Starting STA for the max_ff_n40C_5v50 timing openroad.py:747
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:05] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:18] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [20:05:18] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the min_tt_025C_5v00 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the min_ff_n40C_5v50 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the max_ff_n40C_5v50 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:19] INFO     Finished STA for the min_ss_125C_4v50 timing openroad.py:762
+   [20:05:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:21] INFO     Finished STA for the max_ss_125C_4v50 timing openroad.py:762
+   [20:05:21] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:21] INFO     Finished STA for the max_tt_025C_5v00 timing openroad.py:762
+   [20:05:21] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:05:22] VERBOSE  Running 'OpenROAD.IRDropReport' at              step.py:1138
+   [20:05:22] VERBOSE  Logging subprocess to                           step.py:1338
+   ─────────────────────────── GDSII Stream Out (Magic) ───────────────────────────
+   [20:05:48] VERBOSE  Running 'Magic.StreamOut' at                    step.py:1138
+   [20:05:48] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Note:  cell (UNNAMED) already existed before reading GDS.
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   [INFO] GDS Write Complete
+   ────────────────────────── GDSII Stream Out (KLayout) ──────────────────────────
+   [20:05:57] VERBOSE  Running 'KLayout.StreamOut' at                  step.py:1138
+   [20:05:57] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO] Merging GDS files…
+   [INFO] Checking for missing GDS…
+   [INFO] All LEF cells have matching GDS cells.
+   [INFO] Writing out GDS
+   t/sha3.klayout.gds'…
+   [20:05:59] VERBOSE  Running 'KLayout.Render' at                     step.py:1138
+   [20:05:59] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:06:01] VERBOSE  Running 'Magic.WriteLEF' at                     step.py:1138
+   [20:06:01] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Warning:  cell (UNNAMED) already existed before reading GDS!
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   [20:06:09] VERBOSE  Running 'Odb.CheckDesignAntennaProperties' at   step.py:1138
+   [20:06:09] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file: /tmp/tmpufw_me52
+   [20:06:10] VERBOSE  Running 'KLayout.XOR' at                        step.py:1138
+   [20:06:10] VERBOSE  Logging subprocess to                           step.py:1338
+   ha3.magic.gds ..
+   /sha3.klayout.gds ..
+   ha3.magic.gds
+   /sha3.klayout.gds
+   [20:06:17] VERBOSE  Running 'Checker.XOR' at                        step.py:1138
+   [20:06:17] VERBOSE  Running 'Magic.DRC' at                          step.py:1138
+   [20:06:17] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   Library written using GDS-II Release 6.0
+   CIF file read error: Warning:  Cell sha3 boundary was redefined.
+   No errors found.
+   [INFO] Saving mag view with DRC errors
+   [20:07:07] VERBOSE  Running 'KLayout.DRC' at                        step.py:1138
+                       step will be skipped.
+   [20:07:07] VERBOSE  Running 'Checker.MagicDRC' at                   step.py:1138
+   [20:07:07] INFO     Check for Magic DRC errors clear.             checker.py:131
+   [20:07:07] VERBOSE  Running 'Checker.KLayoutDRC' at                 step.py:1138
+   [20:07:07] WARNING  The KLayout DRC errors metric was not found.  checker.py:133
+                       Are you sure the relevant step was run?
+   [20:07:07] VERBOSE  Running 'Magic.SpiceExtraction' at              step.py:1138
+   [20:07:07] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   exttospice finished.
+   [20:07:23] VERBOSE  Running 'Checker.IllegalOverlap' at             step.py:1138
+   [20:07:23] INFO     Check for Magic Illegal Overlap errors clear. checker.py:131
+   [20:07:23] VERBOSE  Running 'Netgen.LVS' at                         step.py:1138
+   [20:07:23] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────── Layout vs. Schematic Error Checker ──────────────────────
+   [20:07:26] VERBOSE  Running 'Checker.LVS' at                        step.py:1138
+   [20:07:26] INFO     Check for LVS errors clear.                   checker.py:131
+   [20:07:26] INFO     Gating variable for step 'Yosys.EQY' set   sequential.py:362
+                       to 'False'- the step will be skipped.
+   [20:07:26] INFO     Skipping step 'Equivalence Check'…         sequential.py:370
+   [20:07:26] VERBOSE  Running 'Checker.SetupViolations' at            step.py:1138
+   [20:07:26] VERBOSE  Running 'Checker.HoldViolations' at             step.py:1138
+   [20:07:27] VERBOSE  Running 'Checker.MaxSlewViolations' at          step.py:1138
+   [20:07:27] VERBOSE  Running 'Checker.MaxCapViolations' at           step.py:1138
+   [20:07:27] VERBOSE  Running 'Misc.ReportManufacturability' at       step.py:1138
+   [20:07:27] WARNING  klayout__drc_error__count not reported.          misc.py:102
+                       errors found.
+                       PnR steps.
+                       OpenROAD PnR steps.
+                       gf180mcuD PDK. This step will be skipped.
+   [20:07:27] WARNING  [Checker.KLayoutDRC] The KLayout DRC errors      flow.py:701
+                       step was run?
+                       klayout__drc_error__count not reported.
+   ⚠️  GDS produced but NOT sign-off clean (violations: synth_check, max_slew, max_cap, max_fanout, setup_timing)
+
+── harden chacha (top=chacha) …
+   [20:07:28] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [20:07:28] INFO     Starting…                                  sequential.py:339
+   [20:07:28] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [20:07:28] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [20:07:28] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [20:07:28] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [20:07:28] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [20:07:28] INFO     Check for Lint errors clear.                  checker.py:131
+   [20:07:28] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [20:07:28] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [20:07:28] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   [20:07:29] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [20:07:29] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   140.5. Finished fast OPT passes.
+   144.9. Finished fast OPT passes. (There is nothing left to do.)
+   ABC: Parsing finished successfully.  Parsing time =     0.08 sec
+   ABC: Error: The network is combinational.
+   [20:07:42] VERBOSE  Running 'Checker.YosysUnmappedCells' at         step.py:1138
+   [20:07:42] VERBOSE  Running 'Checker.YosysSynthChecks' at           step.py:1138
+   [20:07:42] INFO     Check for Yosys check errors clear.           checker.py:131
+   [20:07:42] VERBOSE  Running 'Checker.NetlistAssignStatements' at    step.py:1138
+   [20:07:42] VERBOSE  Running 'OpenROAD.CheckSDCFiles' at             step.py:1138
+                       fallback SDC for OpenROAD PnR steps.
+                       generic fallback SDC for OpenROAD PnR steps.
+   [20:07:42] VERBOSE  Running 'OpenROAD.CheckMacroInstances' at       step.py:1138
+   [20:07:42] VERBOSE  Running 'OpenROAD.STAPrePNR' at                 step.py:1138
+   [20:07:42] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [20:07:42] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [20:07:42] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [20:07:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:50] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [20:07:50] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [20:07:50] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [20:07:50] VERBOSE  Running 'OpenROAD.Floorplan' at                 step.py:1138
+   [20:07:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:51] VERBOSE  Running 'OpenROAD.DumpRCValues' at              step.py:1138
+   [20:07:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file:
+   [20:07:52] VERBOSE  Running 'Odb.CheckMacroAntennaProperties' at    step.py:1138
+   [20:07:52] VERBOSE  Running 'Odb.SetPowerConnections' at            step.py:1138
+   [20:07:52] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:53] VERBOSE  Running 'Odb.ManualMacroPlacement' at           step.py:1138
+   [20:07:53] VERBOSE  Running 'OpenROAD.CutRows' at                   step.py:1138
+   [20:07:53] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:54] VERBOSE  Running 'OpenROAD.TapEndcapInsertion' at        step.py:1138
+   [20:07:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:55] VERBOSE  Running 'Odb.AddPDNObstructions' at             step.py:1138
+   [20:07:55] VERBOSE  Running 'OpenROAD.GeneratePDN' at               step.py:1138
+   [20:07:55] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:07:57] VERBOSE  Running 'Odb.RemovePDNObstructions' at          step.py:1138
+   [20:07:57] VERBOSE  Running 'Odb.AddRoutingObstructions' at         step.py:1138
+   [20:07:57] VERBOSE  Running 'OpenROAD.GlobalPlacementSkipIO' at     step.py:1138
+   [20:07:57] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-1001] Global placement finished at iteration 420
+   [20:08:00] VERBOSE  Running 'OpenROAD.IOPlacement' at               step.py:1138
+   [20:08:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:08:01] VERBOSE  Running 'Odb.CustomIOPlacement' at              step.py:1138
+   [20:08:01] VERBOSE  Running 'Odb.ApplyDEFTemplate' at               step.py:1138
+   [20:08:01] VERBOSE  Running 'OpenROAD.GlobalPlacement' at           step.py:1138
+   [20:08:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-0090] Routability finished. Target routing congestion achieved
+   [INFO GPL-1001] Global placement finished at iteration 441
+   [20:08:06] VERBOSE  Running 'Odb.WriteVerilogHeader' at             step.py:1138
+   [20:08:06] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:08:07] VERBOSE  Running 'Checker.PowerGridViolations' at        step.py:1138
+   [20:08:07] VERBOSE  Running 'OpenROAD.STAMidPNR' at                 step.py:1138
+   [20:08:07] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:08:16] VERBOSE  Running 'OpenROAD.RepairDesignPostGPL' at       step.py:1138
+   [20:08:16] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:08:47] VERBOSE  Running 'Odb.ManualGlobalPlacement' at          step.py:1138
+   [20:08:47] VERBOSE  Running 'OpenROAD.DetailedPlacement' at         step.py:1138
+   [20:08:47] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:08:48] VERBOSE  Running 'OpenROAD.CTS' at                       step.py:1138
+   [20:08:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:09:14] VERBOSE  Running 'OpenROAD.STAMidPNR-1' at               step.py:1138
+   [20:09:14] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:09:23] VERBOSE  Running 'OpenROAD.ResizerTimingPostCTS' at      step.py:1138
+   [20:09:23] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:20:19] VERBOSE  Running 'OpenROAD.STAMidPNR-2' at               step.py:1138
+   [20:20:19] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:20:28] VERBOSE  Running 'OpenROAD.GlobalRouting' at             step.py:1138
+   [20:20:28] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GRT-0199] Via filling finished.
+   [20:20:31] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:20:31] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:20:40] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:20:40] INFO     Skipping step 'Repair Design (Post-Global  sequential.py:370
+   [20:20:40] VERBOSE  Running 'Odb.DiodesOnPorts' at                  step.py:1138
+   [20:20:40] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:20:40] INFO     Skipping step 'Heuristic Diode Insertion'… sequential.py:370
+   [20:20:40] VERBOSE  Running 'OpenROAD.RepairAntennas' at            step.py:1138
+   [20:20:40] VERBOSE  Running 'OpenROAD.DiodeInsertion' at            step.py:1138
+   [20:20:40] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:21:13] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:21:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:21:22] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:21:22] INFO     Skipping step 'Resizer Timing              sequential.py:370
+   [20:21:22] VERBOSE  Running 'OpenROAD.STAMidPNR-3' at               step.py:1138
+   [20:21:22] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:21:31] VERBOSE  Running 'OpenROAD.DetailedRouting' at           step.py:1138
+   [20:21:31] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO DRT-0176] GCELLGRID X 0 DO 121 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 123 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 121 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 123 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 121 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 123 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 121 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 123 STEP 16800 ;
+   [20:24:27] VERBOSE  Running 'Odb.RemoveRoutingObstructions' at      step.py:1138
+   [20:24:27] VERBOSE  Running 'OpenROAD.CheckAntennas-1' at           step.py:1138
+   [20:24:27] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:33] VERBOSE  Running 'Checker.TrDRC' at                      step.py:1138
+   [20:24:33] INFO     Check for Routing DRC errors clear.           checker.py:131
+   [20:24:33] VERBOSE  Running 'Odb.ReportDisconnectedPins' at         step.py:1138
+   [20:24:33] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:34] VERBOSE  Running 'Checker.DisconnectedPins' at           step.py:1138
+   [20:24:34] VERBOSE  Running 'Odb.ReportWireLength' at               step.py:1138
+   [20:24:34] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:35] VERBOSE  Running 'Checker.WireLength' at                 step.py:1138
+   [20:24:35] VERBOSE  Running 'OpenROAD.FillInsertion' at             step.py:1138
+   [20:24:35] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:37] VERBOSE  Running 'Odb.CellFrequencyTables' at            step.py:1138
+   [20:24:37] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:37] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:39] VERBOSE  Running 'OpenROAD.RCX' at                       step.py:1138
+   [20:24:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:39] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] INFO     Finished RCX for corners matching max_*.    openroad.py:2154
+   [20:24:42] INFO     Finished RCX for corners matching min_*.    openroad.py:2154
+   [20:24:42] INFO     Finished RCX for corners matching nom_*.    openroad.py:2154
+   [20:24:42] VERBOSE  Running 'OpenROAD.STAPostPNR' at                step.py:1138
+   [20:24:42] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [20:24:42] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [20:24:42] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [20:24:42] INFO     Starting STA for the min_tt_025C_5v00 timing openroad.py:747
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] INFO     Starting STA for the min_ss_125C_4v50 timing openroad.py:747
+   [20:24:42] INFO     Starting STA for the min_ff_n40C_5v50 timing openroad.py:747
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] INFO     Starting STA for the max_tt_025C_5v00 timing openroad.py:747
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] INFO     Starting STA for the max_ss_125C_4v50 timing openroad.py:747
+   [20:24:42] INFO     Starting STA for the max_ff_n40C_5v50 timing openroad.py:747
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:24:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:00] INFO     Finished STA for the min_ff_n40C_5v50 timing openroad.py:762
+   [20:25:00] INFO     Finished STA for the min_tt_025C_5v00 timing openroad.py:762
+   [20:25:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:00] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [20:25:00] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [20:25:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:00] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:01] INFO     Finished STA for the max_ff_n40C_5v50 timing openroad.py:762
+   [20:25:01] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:02] INFO     Finished STA for the min_ss_125C_4v50 timing openroad.py:762
+   [20:25:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:02] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [20:25:02] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:03] INFO     Finished STA for the max_ss_125C_4v50 timing openroad.py:762
+   [20:25:03] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:03] INFO     Finished STA for the max_tt_025C_5v00 timing openroad.py:762
+   [20:25:03] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:04] VERBOSE  Running 'OpenROAD.IRDropReport' at              step.py:1138
+   [20:25:04] VERBOSE  Logging subprocess to                           step.py:1338
+   ─────────────────────────── GDSII Stream Out (Magic) ───────────────────────────
+   [20:25:29] VERBOSE  Running 'Magic.StreamOut' at                    step.py:1138
+   [20:25:29] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Note:  cell (UNNAMED) already existed before reading GDS.
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   [INFO] GDS Write Complete
+   ────────────────────────── GDSII Stream Out (KLayout) ──────────────────────────
+   [20:25:41] VERBOSE  Running 'KLayout.StreamOut' at                  step.py:1138
+   [20:25:41] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO] Merging GDS files…
+   [INFO] Checking for missing GDS…
+   [INFO] All LEF cells have matching GDS cells.
+   [INFO] Writing out GDS
+   out/chacha.klayout.gds'…
+   [20:25:42] VERBOSE  Running 'KLayout.Render' at                     step.py:1138
+   [20:25:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:25:44] VERBOSE  Running 'Magic.WriteLEF' at                     step.py:1138
+   [20:25:44] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Warning:  cell (UNNAMED) already existed before reading GDS!
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   [20:25:54] VERBOSE  Running 'Odb.CheckDesignAntennaProperties' at   step.py:1138
+   [20:25:54] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file: /tmp/tmpj7q96btp
+   [20:25:55] VERBOSE  Running 'KLayout.XOR' at                        step.py:1138
+   [20:25:55] VERBOSE  Logging subprocess to                           step.py:1338
+   /chacha.magic.gds ..
+   ut/chacha.klayout.gds ..
+   /chacha.magic.gds
+   ut/chacha.klayout.gds
+   [20:26:01] VERBOSE  Running 'Checker.XOR' at                        step.py:1138
+   [20:26:01] VERBOSE  Running 'Magic.DRC' at                          step.py:1138
+   [20:26:02] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   Library written using GDS-II Release 6.0
+   CIF file read error: Warning:  Cell chacha boundary was redefined.
+   No errors found.
+   [INFO] Saving mag view with DRC errors
+   [20:26:50] VERBOSE  Running 'KLayout.DRC' at                        step.py:1138
+                       step will be skipped.
+   [20:26:50] VERBOSE  Running 'Checker.MagicDRC' at                   step.py:1138
+   [20:26:50] INFO     Check for Magic DRC errors clear.             checker.py:131
+   [20:26:50] VERBOSE  Running 'Checker.KLayoutDRC' at                 step.py:1138
+   [20:26:50] WARNING  The KLayout DRC errors metric was not found.  checker.py:133
+                       Are you sure the relevant step was run?
+   [20:26:50] VERBOSE  Running 'Magic.SpiceExtraction' at              step.py:1138
+   [20:26:50] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   exttospice finished.
+   [20:27:08] VERBOSE  Running 'Checker.IllegalOverlap' at             step.py:1138
+   [20:27:08] INFO     Check for Magic Illegal Overlap errors clear. checker.py:131
+   [20:27:08] VERBOSE  Running 'Netgen.LVS' at                         step.py:1138
+   [20:27:08] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────── Layout vs. Schematic Error Checker ──────────────────────
+   [20:27:12] VERBOSE  Running 'Checker.LVS' at                        step.py:1138
+   [20:27:12] INFO     Check for LVS errors clear.                   checker.py:131
+   [20:27:12] INFO     Gating variable for step 'Yosys.EQY' set   sequential.py:362
+                       to 'False'- the step will be skipped.
+   [20:27:12] INFO     Skipping step 'Equivalence Check'…         sequential.py:370
+   [20:27:12] VERBOSE  Running 'Checker.SetupViolations' at            step.py:1138
+   [20:27:12] VERBOSE  Running 'Checker.HoldViolations' at             step.py:1138
+   [20:27:12] VERBOSE  Running 'Checker.MaxSlewViolations' at          step.py:1138
+   [20:27:12] VERBOSE  Running 'Checker.MaxCapViolations' at           step.py:1138
+   [20:27:12] VERBOSE  Running 'Misc.ReportManufacturability' at       step.py:1138
+   [20:27:12] WARNING  klayout__drc_error__count not reported.          misc.py:102
+                       PnR steps.
+                       OpenROAD PnR steps.
+                       gf180mcuD PDK. This step will be skipped.
+   [20:27:12] WARNING  [Checker.KLayoutDRC] The KLayout DRC errors      flow.py:701
+                       step was run?
+                       klayout__drc_error__count not reported.
+   ⚠️  GDS produced but NOT sign-off clean (violations: max_slew, max_cap, max_fanout, setup_timing)
+
+── harden poly1305 (top=poly1305) …
+   [20:27:13] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [20:27:13] INFO     Starting…                                  sequential.py:339
+   [20:27:13] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [20:27:13] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [20:27:13] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [20:27:13] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [20:27:13] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [20:27:13] INFO     Check for Lint errors clear.                  checker.py:131
+   [20:27:13] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [20:27:13] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [20:27:14] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   [20:27:14] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [20:27:14] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   156.5. Finished fast OPT passes.
+   160.9. Finished fast OPT passes. (There is nothing left to do.)
+   ABC: Parsing finished successfully.  Parsing time =     0.08 sec
+   ABC: Error: The network is combinational.
+   [20:27:51] VERBOSE  Running 'Checker.YosysUnmappedCells' at         step.py:1138
+   [20:27:51] VERBOSE  Running 'Checker.YosysSynthChecks' at           step.py:1138
+   [20:27:51] INFO     Check for Yosys check errors clear.           checker.py:131
+   [20:27:51] VERBOSE  Running 'Checker.NetlistAssignStatements' at    step.py:1138
+   [20:27:51] VERBOSE  Running 'OpenROAD.CheckSDCFiles' at             step.py:1138
+                       fallback SDC for OpenROAD PnR steps.
+                       generic fallback SDC for OpenROAD PnR steps.
+   [20:27:51] VERBOSE  Running 'OpenROAD.CheckMacroInstances' at       step.py:1138
+   [20:27:51] VERBOSE  Running 'OpenROAD.STAPrePNR' at                 step.py:1138
+   [20:27:51] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [20:27:51] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [20:27:51] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [20:27:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:27:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:27:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:03] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [20:28:03] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [20:28:04] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [20:28:04] VERBOSE  Running 'OpenROAD.Floorplan' at                 step.py:1138
+   [20:28:04] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:06] VERBOSE  Running 'OpenROAD.DumpRCValues' at              step.py:1138
+   [20:28:06] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file:
+   [20:28:07] VERBOSE  Running 'Odb.CheckMacroAntennaProperties' at    step.py:1138
+   [20:28:07] VERBOSE  Running 'Odb.SetPowerConnections' at            step.py:1138
+   [20:28:07] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:07] VERBOSE  Running 'Odb.ManualMacroPlacement' at           step.py:1138
+   [20:28:07] VERBOSE  Running 'OpenROAD.CutRows' at                   step.py:1138
+   [20:28:08] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:09] VERBOSE  Running 'OpenROAD.TapEndcapInsertion' at        step.py:1138
+   [20:28:09] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:11] VERBOSE  Running 'Odb.AddPDNObstructions' at             step.py:1138
+   [20:28:11] VERBOSE  Running 'OpenROAD.GeneratePDN' at               step.py:1138
+   [20:28:11] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:14] VERBOSE  Running 'Odb.RemovePDNObstructions' at          step.py:1138
+   [20:28:14] VERBOSE  Running 'Odb.AddRoutingObstructions' at         step.py:1138
+   [20:28:14] VERBOSE  Running 'OpenROAD.GlobalPlacementSkipIO' at     step.py:1138
+   [20:28:14] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-1001] Global placement finished at iteration 465
+   [20:28:22] VERBOSE  Running 'OpenROAD.IOPlacement' at               step.py:1138
+   [20:28:22] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:24] VERBOSE  Running 'Odb.CustomIOPlacement' at              step.py:1138
+   [20:28:24] VERBOSE  Running 'Odb.ApplyDEFTemplate' at               step.py:1138
+   [20:28:24] VERBOSE  Running 'OpenROAD.GlobalPlacement' at           step.py:1138
+   [20:28:24] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GPL-0090] Routability finished. Target routing congestion achieved
+   [INFO GPL-1001] Global placement finished at iteration 494
+   [20:28:36] VERBOSE  Running 'Odb.WriteVerilogHeader' at             step.py:1138
+   [20:28:36] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:37] VERBOSE  Running 'Checker.PowerGridViolations' at        step.py:1138
+   [20:28:37] VERBOSE  Running 'OpenROAD.STAMidPNR' at                 step.py:1138
+   [20:28:37] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:28:51] VERBOSE  Running 'OpenROAD.RepairDesignPostGPL' at       step.py:1138
+   [20:28:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:29:45] VERBOSE  Running 'Odb.ManualGlobalPlacement' at          step.py:1138
+   [20:29:45] VERBOSE  Running 'OpenROAD.DetailedPlacement' at         step.py:1138
+   [20:29:45] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:29:48] VERBOSE  Running 'OpenROAD.CTS' at                       step.py:1138
+   [20:29:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:30:32] VERBOSE  Running 'OpenROAD.STAMidPNR-1' at               step.py:1138
+   [20:30:32] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:30:45] VERBOSE  Running 'OpenROAD.ResizerTimingPostCTS' at      step.py:1138
+   [20:30:45] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:35:31] VERBOSE  Running 'OpenROAD.STAMidPNR-2' at               step.py:1138
+   [20:35:31] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:35:44] VERBOSE  Running 'OpenROAD.GlobalRouting' at             step.py:1138
+   [20:35:44] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO GRT-0199] Via filling finished.
+   [20:35:49] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:35:49] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:36:06] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:36:06] INFO     Skipping step 'Repair Design (Post-Global  sequential.py:370
+   [20:36:06] VERBOSE  Running 'Odb.DiodesOnPorts' at                  step.py:1138
+   [20:36:06] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:36:06] INFO     Skipping step 'Heuristic Diode Insertion'… sequential.py:370
+   [20:36:06] VERBOSE  Running 'OpenROAD.RepairAntennas' at            step.py:1138
+   [20:36:06] VERBOSE  Running 'OpenROAD.DiodeInsertion' at            step.py:1138
+   [20:36:06] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:37:13] VERBOSE  Running 'OpenROAD.CheckAntennas' at             step.py:1138
+   [20:37:13] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:37:30] INFO     Gating variable for step                   sequential.py:362
+                       'False'- the step will be skipped.
+   [20:37:30] INFO     Skipping step 'Resizer Timing              sequential.py:370
+   [20:37:30] VERBOSE  Running 'OpenROAD.STAMidPNR-3' at               step.py:1138
+   [20:37:30] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:37:44] VERBOSE  Running 'OpenROAD.DetailedRouting' at           step.py:1138
+   [20:37:44] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO DRT-0176] GCELLGRID X 0 DO 173 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 175 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 173 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 175 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 173 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 175 STEP 16800 ;
+   [INFO DRT-0176] GCELLGRID X 0 DO 173 STEP 16800 ;
+   [INFO DRT-0177] GCELLGRID Y 0 DO 175 STEP 16800 ;
+   [20:41:31] VERBOSE  Running 'Odb.RemoveRoutingObstructions' at      step.py:1138
+   [20:41:31] VERBOSE  Running 'OpenROAD.CheckAntennas-1' at           step.py:1138
+   [20:41:31] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:42] VERBOSE  Running 'Checker.TrDRC' at                      step.py:1138
+   [20:41:42] INFO     Check for Routing DRC errors clear.           checker.py:131
+   [20:41:42] VERBOSE  Running 'Odb.ReportDisconnectedPins' at         step.py:1138
+   [20:41:42] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:45] VERBOSE  Running 'Checker.DisconnectedPins' at           step.py:1138
+   [20:41:45] VERBOSE  Running 'Odb.ReportWireLength' at               step.py:1138
+   [20:41:45] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:46] VERBOSE  Running 'Checker.WireLength' at                 step.py:1138
+   [20:41:46] VERBOSE  Running 'OpenROAD.FillInsertion' at             step.py:1138
+   [20:41:46] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:49] VERBOSE  Running 'Odb.CellFrequencyTables' at            step.py:1138
+   [20:41:49] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:49] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:51] VERBOSE  Running 'OpenROAD.RCX' at                       step.py:1138
+   [20:41:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:51] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] INFO     Finished RCX for corners matching nom_*.    openroad.py:2154
+   [20:41:58] INFO     Finished RCX for corners matching max_*.    openroad.py:2154
+   [20:41:58] INFO     Finished RCX for corners matching min_*.    openroad.py:2154
+   [20:41:58] VERBOSE  Running 'OpenROAD.STAPostPNR' at                step.py:1138
+   [20:41:58] INFO     Starting STA for the nom_tt_025C_5v00 timing openroad.py:747
+   [20:41:58] INFO     Starting STA for the nom_ss_125C_4v50 timing openroad.py:747
+   [20:41:58] INFO     Starting STA for the nom_ff_n40C_5v50 timing openroad.py:747
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] INFO     Starting STA for the min_tt_025C_5v00 timing openroad.py:747
+   [20:41:58] INFO     Starting STA for the min_ss_125C_4v50 timing openroad.py:747
+   [20:41:58] INFO     Starting STA for the min_ff_n40C_5v50 timing openroad.py:747
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] INFO     Starting STA for the max_tt_025C_5v00 timing openroad.py:747
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] INFO     Starting STA for the max_ss_125C_4v50 timing openroad.py:747
+   [20:41:58] INFO     Starting STA for the max_ff_n40C_5v50 timing openroad.py:747
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:41:58] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:25] INFO     Finished STA for the nom_ss_125C_4v50 timing openroad.py:762
+   [20:42:25] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:26] INFO     Finished STA for the max_ss_125C_4v50 timing openroad.py:762
+   [20:42:26] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:26] INFO     Finished STA for the max_tt_025C_5v00 timing openroad.py:762
+   [20:42:26] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:26] INFO     Finished STA for the nom_ff_n40C_5v50 timing openroad.py:762
+   [20:42:26] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:27] INFO     Finished STA for the nom_tt_025C_5v00 timing openroad.py:762
+   [20:42:27] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:27] INFO     Finished STA for the min_ff_n40C_5v50 timing openroad.py:762
+   [20:42:27] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:27] INFO     Finished STA for the min_ss_125C_4v50 timing openroad.py:762
+   [20:42:27] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:29] INFO     Finished STA for the min_tt_025C_5v00 timing openroad.py:762
+   [20:42:29] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:30] INFO     Finished STA for the max_ff_n40C_5v50 timing openroad.py:762
+   [20:42:30] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:42:31] VERBOSE  Running 'OpenROAD.IRDropReport' at              step.py:1138
+   [20:42:31] VERBOSE  Logging subprocess to                           step.py:1338
+   ─────────────────────────── GDSII Stream Out (Magic) ───────────────────────────
+   [20:43:28] VERBOSE  Running 'Magic.StreamOut' at                    step.py:1138
+   [20:43:28] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Note:  cell (UNNAMED) already existed before reading GDS.
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   $PDKPATH/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_mcu7t5v0.gds
+   [INFO] GDS Write Complete
+   ────────────────────────── GDSII Stream Out (KLayout) ──────────────────────────
+   [20:43:48] VERBOSE  Running 'KLayout.StreamOut' at                  step.py:1138
+   [20:43:48] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO] Merging GDS files…
+   [INFO] Checking for missing GDS…
+   [INFO] All LEF cells have matching GDS cells.
+   [INFO] Writing out GDS
+   amout/poly1305.klayout.gds'…
+   [20:43:50] VERBOSE  Running 'KLayout.Render' at                     step.py:1138
+   [20:43:50] VERBOSE  Logging subprocess to                           step.py:1338
+   [20:43:53] VERBOSE  Running 'Magic.WriteLEF' at                     step.py:1138
+   [20:43:53] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   > gds read
+   /home/irman/.ciel/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/gds/gf180mcu_fd_sc_
+   mcu7t5v0.gds
+   Library written using GDS-II Release 3.0
+   Warning:  cell (UNNAMED) already existed before reading GDS!
+   CIF file read error: Warning:  Cell gf180mcu_fd_sc_mcu7t5v0__clkbuf_3 boundary
+   [20:44:10] VERBOSE  Running 'Odb.CheckDesignAntennaProperties' at   step.py:1138
+   [20:44:10] VERBOSE  Logging subprocess to                           step.py:1338
+   [INFO ODB-0134] Finished DEF file: /tmp/tmp1f65ri4f
+   [20:44:11] VERBOSE  Running 'KLayout.XOR' at                        step.py:1138
+   [20:44:11] VERBOSE  Logging subprocess to                           step.py:1338
+   ut/poly1305.magic.gds ..
+   mout/poly1305.klayout.gds ..
+   ut/poly1305.magic.gds
+   mout/poly1305.klayout.gds
+   [20:44:20] VERBOSE  Running 'Checker.XOR' at                        step.py:1138
+   [20:44:20] VERBOSE  Running 'Magic.DRC' at                          step.py:1138
+   [20:44:20] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   Library written using GDS-II Release 6.0
+   CIF file read error: Warning:  Cell poly1305 boundary was redefined.
+   No errors found.
+   [INFO] Saving mag view with DRC errors
+   [20:46:03] VERBOSE  Running 'KLayout.DRC' at                        step.py:1138
+                       step will be skipped.
+   [20:46:03] VERBOSE  Running 'Checker.MagicDRC' at                   step.py:1138
+   [20:46:03] INFO     Check for Magic DRC errors clear.             checker.py:131
+   [20:46:03] VERBOSE  Running 'Checker.KLayoutDRC' at                 step.py:1138
+   [20:46:03] WARNING  The KLayout DRC errors metric was not found.  checker.py:133
+                       Are you sure the relevant step was run?
+   [20:46:03] VERBOSE  Running 'Magic.SpiceExtraction' at              step.py:1138
+   [20:46:03] VERBOSE  Logging subprocess to                           step.py:1338
+   Starting magic under Tcl interpreter
+   LEF read, Line 106 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 156 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 208 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 260 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   LEF read, Line 315 (Message): Unknown keyword "DENSITYCHECKSTEP" in LEF file;
+   exttospice finished.
+   [20:46:37] VERBOSE  Running 'Checker.IllegalOverlap' at             step.py:1138
+   [20:46:37] INFO     Check for Magic Illegal Overlap errors clear. checker.py:131
+   [20:46:37] VERBOSE  Running 'Netgen.LVS' at                         step.py:1138
+   [20:46:37] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────── Layout vs. Schematic Error Checker ──────────────────────
+   [20:46:47] VERBOSE  Running 'Checker.LVS' at                        step.py:1138
+   [20:46:47] INFO     Check for LVS errors clear.                   checker.py:131
+   [20:46:47] INFO     Gating variable for step 'Yosys.EQY' set   sequential.py:362
+                       to 'False'- the step will be skipped.
+   [20:46:47] INFO     Skipping step 'Equivalence Check'…         sequential.py:370
+   [20:46:47] VERBOSE  Running 'Checker.SetupViolations' at            step.py:1138
+   [20:46:47] VERBOSE  Running 'Checker.HoldViolations' at             step.py:1138
+   [20:46:47] VERBOSE  Running 'Checker.MaxSlewViolations' at          step.py:1138
+   [20:46:47] VERBOSE  Running 'Checker.MaxCapViolations' at           step.py:1138
+   [20:46:47] VERBOSE  Running 'Misc.ReportManufacturability' at       step.py:1138
+   [20:46:47] WARNING  klayout__drc_error__count not reported.          misc.py:102
+                       PnR steps.
+                       OpenROAD PnR steps.
+                       gf180mcuD PDK. This step will be skipped.
+   [20:46:48] WARNING  [Checker.KLayoutDRC] The KLayout DRC errors      flow.py:701
+                       step was run?
+                       klayout__drc_error__count not reported.
+   ⚠️  GDS produced but NOT sign-off clean (violations: antenna, max_slew, max_cap, max_fanout, setup_timing)
+
+── harden blake2s (top=blake2s) …
+   [20:46:49] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [20:46:49] INFO     Starting…                                  sequential.py:339
+   [20:46:49] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [20:46:49] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [20:46:49] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [20:46:49] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [20:46:49] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [20:46:49] INFO     Check for Lint errors clear.                  checker.py:131
+   [20:46:49] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [20:46:49] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [20:46:50] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   [20:46:50] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [20:46:50] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   Successfully finished Verilog frontend.
+   134.5. Finished fast OPT passes.
+   138.9. Finished fast OPT passes. (There is nothing left to do.)

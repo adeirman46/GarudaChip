@@ -1,0 +1,74 @@
+{
+  "id": "sha256",
+  "name": "sha256",
+  "category": "crypto",
+  "subtitle": "SHA-256 hash core",
+  "source": "clone:https://github.com/secworks/sha256",
+  "top": "sha256",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "sha256.v",
+    "sha256_w_mem.v",
+    "sha256_k_constants.v",
+    "sha256_core.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 916228,
+    "core_area_um2": 871982,
+    "cell_count": 46720,
+    "util_pct": 0.453844,
+    "wns_ns": -12.230629299963285,
+    "power_mw": 0.048850372433662415
+  },
+  "gds": "sha256.gds",
+  "png": "sha256.png",
+  "lines": 1194,
+  "created_at": "2026-06-22T08:53:28.240454+00:00",
+  "updated_at": "2026-06-23T12:43:10.353870+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 305,
+    "max_cap": 43,
+    "max_fanout": 131,
+    "hold_vio": 0,
+    "setup_wns_ns": -12.231,
+    "slow_corner_slew": 6135,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

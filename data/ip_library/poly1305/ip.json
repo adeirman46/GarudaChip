@@ -1,0 +1,76 @@
+{
+  "id": "poly1305",
+  "name": "poly1305",
+  "category": "crypto",
+  "subtitle": "Poly1305 MAC",
+  "source": "clone:https://github.com/secworks/poly1305",
+  "top": "poly1305",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "poly1305_final.v",
+    "poly1305_mulacc.v",
+    "poly1305.v",
+    "poly1305_core.v",
+    "poly1305_pblock.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 2157030,
+    "core_area_um2": 2085830,
+    "cell_count": 128168,
+    "util_pct": 0.427706,
+    "wns_ns": -17.143577709341162,
+    "power_mw": 0.052614476531744
+  },
+  "gds": "poly1305.gds",
+  "png": "poly1305.png",
+  "lines": 1810,
+  "created_at": "2026-06-22T08:53:34.180748+00:00",
+  "updated_at": "2026-06-23T13:46:48.307211+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 1,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 746,
+    "max_cap": 98,
+    "max_fanout": 142,
+    "hold_vio": 0,
+    "setup_wns_ns": -17.144,
+    "slow_corner_slew": 13190,
+    "clean": false,
+    "failed": [
+      "antenna",
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

@@ -1,0 +1,42 @@
+{
+  "id": "bus_axi_register_slice_forwarding",
+  "name": "AXI Register Slice Forwarding",
+  "category": "bus",
+  "subtitle": "Axi register slice module with forwarding and backwarding registration.",
+  "source": "faiss-dataset",
+  "top": "axi_register_slice",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_data",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "m_axi_ready",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "axi_register_slice.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 112,
+  "created_at": "2026-06-22T14:17:36.905975+00:00",
+  "updated_at": "2026-06-22T14:33:44.610682+00:00"
+}

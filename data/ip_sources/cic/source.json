@@ -1,0 +1,10 @@
+{
+  "name": "cic",
+  "repo": "https://github.com/freecores/cic_core",
+  "commit": "64233790a1f4",
+  "category": "dsp",
+  "subtitle": "CIC decimation/interpolation filter",
+  "rtl_files": 6,
+  "license": "",
+  "license_head": ""
+}

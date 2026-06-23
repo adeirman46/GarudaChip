@@ -1,0 +1,77 @@
+{
+  "id": "aes",
+  "name": "aes",
+  "category": "crypto",
+  "subtitle": "AES-128/256 encrypt/decrypt",
+  "source": "clone:https://github.com/secworks/aes",
+  "top": "aes",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "aes_key_mem.v",
+    "aes_encipher_block.v",
+    "aes.v",
+    "aes_core.v",
+    "aes_decipher_block.v",
+    "aes_sbox.v",
+    "aes_inv_sbox.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 1531600,
+    "core_area_um2": 1476710,
+    "cell_count": 83700,
+    "util_pct": 0.466609,
+    "wns_ns": -20.331843450999585,
+    "power_mw": 0.22738419473171234
+  },
+  "gds": "aes.gds",
+  "png": "aes.png",
+  "lines": 2714,
+  "created_at": "2026-06-22T08:53:09.402118+00:00",
+  "updated_at": "2026-06-23T12:33:27.603806+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 1250,
+    "max_cap": 147,
+    "max_fanout": 212,
+    "hold_vio": 0,
+    "setup_wns_ns": -20.332,
+    "slow_corner_slew": 17384,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

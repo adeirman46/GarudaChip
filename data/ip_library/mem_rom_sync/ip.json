@@ -1,0 +1,42 @@
+{
+  "id": "mem_rom_sync",
+  "name": "Synchronous ROM",
+  "category": "memory",
+  "subtitle": "Synchronous ROM (initialized lookup table)",
+  "source": "generated",
+  "top": "rom_sync",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "dout",
+      "dir": "output",
+      "width": "[DW-1:0]"
+    }
+  ],
+  "rtl": [
+    "rom_sync.v"
+  ],
+  "tb": [
+    "rom_sync_tb.v"
+  ],
+  "sim_status": "pass",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 3958.32,
+    "core_area_um2": 1602.5,
+    "cell_count": 89,
+    "util_pct": 0.936986,
+    "wns_ns": 17.842591908983024,
+    "power_mw": 0.0007460966007784009
+  },
+  "gds": "rom_sync.gds",
+  "png": "rom_sync.png",
+  "lines": 14,
+  "created_at": "2026-06-22T09:02:54.621805+00:00",
+  "updated_at": "2026-06-22T13:42:01.359854+00:00",
+  "sim_log": "\nVCD info: dumpfile design.vcd opened for output.\nPASS: ROM ok"
+}

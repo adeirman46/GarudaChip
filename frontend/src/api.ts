@@ -1,6 +1,10 @@
-import type { Chat, KnowledgeStats, Message, RunEvent } from "./types";
+import type {
+  Chat, Floorplan, IP, IPLibraryResponse, KnowledgeStats, Message, Padframe,
+  Project, RunEvent, SimResult, SimWorkspace, SimWorkspaceMeta,
+} from "./types";
 
 const J = { "Content-Type": "application/json" };
+const getJSON = async (u: string) => (await fetch(u)).json();
 
 export const api = {
   async listChats(): Promise<Chat[]> {
@@ -70,5 +74,106 @@ export const api = {
 
   fileUrl(runId: string, path: string): string {
     return `/api/runs/${runId}/file?path=${encodeURIComponent(path)}`;
+  },
+
+  // --- projects -------------------------------------------------------------
+  async listProjects(): Promise<Project[]> {
+    return (await getJSON("/api/projects")).projects;
+  },
+  async createProject(name?: string): Promise<Project> {
+    return (await fetch("/api/projects", { method: "POST", headers: J, body: JSON.stringify({ name }) })).json();
+  },
+  async renameProject(id: string, name: string): Promise<void> {
+    await fetch(`/api/projects/${id}`, { method: "PATCH", headers: J, body: JSON.stringify({ name }) });
+  },
+  async deleteProject(id: string, cascade = false): Promise<void> {
+    await fetch(`/api/projects/${id}?cascade=${cascade}`, { method: "DELETE" });
+  },
+  async createChatIn(projectId: string | null, title?: string): Promise<Chat> {
+    return (await fetch("/api/chats", { method: "POST", headers: J, body: JSON.stringify({ title, project_id: projectId }) })).json();
+  },
+  async moveChat(chatId: string, projectId: string | null): Promise<void> {
+    await fetch(`/api/chats/${chatId}/move`, { method: "POST", headers: J, body: JSON.stringify({ project_id: projectId }) });
+  },
+
+  // --- IP library + Create-IP ----------------------------------------------
+  async listIPs(): Promise<IPLibraryResponse> {
+    return getJSON("/api/ips");
+  },
+  async getIP(id: string): Promise<IP> {
+    return getJSON(`/api/ips/${id}`);
+  },
+  async createIP(name: string, category: string, subtitle: string, files: File[], top = ""): Promise<IP> {
+    const fd = new FormData();
+    fd.append("name", name); fd.append("category", category);
+    fd.append("subtitle", subtitle); fd.append("top", top);
+    for (const f of files) fd.append("files", f);
+    return (await fetch("/api/ips", { method: "POST", body: fd })).json();
+  },
+  async deleteIP(id: string): Promise<void> {
+    await fetch(`/api/ips/${id}`, { method: "DELETE" });
+  },
+  async simulateIP(id: string): Promise<{ status: string; log: string }> {
+    return (await fetch(`/api/ips/${id}/simulate`, { method: "POST" })).json();
+  },
+  async hardenIP(id: string, opts: object): Promise<{ job_id: string }> {
+    return (await fetch(`/api/ips/${id}/harden`, { method: "POST", headers: J, body: JSON.stringify(opts) })).json();
+  },
+  streamJob(jobId: string, onEvent: (e: any) => void): () => void {
+    const es = new EventSource(`/api/jobs/${jobId}/stream`);
+    es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch { /* heartbeat */ } };
+    es.onerror = () => es.close();
+    return () => es.close();
+  },
+  ipFileUrl(id: string, path: string): string {
+    return `/api/ips/${id}/file?path=${encodeURIComponent(path)}`;
+  },
+
+  // --- simulation -----------------------------------------------------------
+  async listWorkspaces(): Promise<SimWorkspaceMeta[]> {
+    return (await getJSON("/api/sim/workspaces")).workspaces;
+  },
+  async createWorkspace(name?: string, ip_id?: string): Promise<SimWorkspaceMeta> {
+    return (await fetch("/api/sim/workspaces", { method: "POST", headers: J, body: JSON.stringify({ name, ip_id }) })).json();
+  },
+  async getWorkspace(id: string): Promise<SimWorkspace> {
+    return getJSON(`/api/sim/workspaces/${id}`);
+  },
+  async uploadToWorkspace(id: string, files: File[]): Promise<SimWorkspace> {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return (await fetch(`/api/sim/workspaces/${id}/files`, { method: "POST", body: fd })).json();
+  },
+  async saveFile(id: string, name: string, content: string): Promise<void> {
+    await fetch(`/api/sim/workspaces/${id}/files/${encodeURIComponent(name)}`, { method: "PUT", headers: J, body: JSON.stringify({ content }) });
+  },
+  async deleteWorkspaceFile(id: string, name: string): Promise<void> {
+    await fetch(`/api/sim/workspaces/${id}/files/${encodeURIComponent(name)}`, { method: "DELETE" });
+  },
+  async deleteWorkspace(id: string): Promise<void> {
+    await fetch(`/api/sim/workspaces/${id}`, { method: "DELETE" });
+  },
+  async runSim(id: string, top?: string): Promise<SimResult> {
+    return (await fetch(`/api/sim/workspaces/${id}/run`, { method: "POST", headers: J, body: JSON.stringify({ top }) })).json();
+  },
+
+  // --- chip studio ----------------------------------------------------------
+  async padframe(): Promise<Padframe> {
+    return getJSON("/api/chipstudio/padframe");
+  },
+  async listFloorplans(): Promise<{ id: string; name: string; blocks: number }[]> {
+    return (await getJSON("/api/chipstudio/floorplans")).floorplans;
+  },
+  async createFloorplan(name?: string): Promise<Floorplan> {
+    return (await fetch("/api/chipstudio/floorplans", { method: "POST", headers: J, body: JSON.stringify({ name }) })).json();
+  },
+  async getFloorplan(id: string): Promise<Floorplan> {
+    return getJSON(`/api/chipstudio/floorplans/${id}`);
+  },
+  async saveFloorplan(fp: Floorplan): Promise<Floorplan> {
+    return (await fetch(`/api/chipstudio/floorplans/${fp.id}`, { method: "PUT", headers: J, body: JSON.stringify(fp) })).json();
+  },
+  async deleteFloorplan(id: string): Promise<void> {
+    await fetch(`/api/chipstudio/floorplans/${id}`, { method: "DELETE" });
   },
 };

@@ -1,0 +1,47 @@
+{
+  "id": "mem_sram_sp",
+  "name": "Single-Port SRAM",
+  "category": "memory",
+  "subtitle": "Synchronous single-port SRAM (parameterized width/depth)",
+  "source": "generated",
+  "top": "sram_sp",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "addr",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    },
+    {
+      "name": "dout",
+      "dir": "output",
+      "width": "[DW-1:0]"
+    }
+  ],
+  "rtl": [
+    "sram_sp.v"
+  ],
+  "tb": [
+    "sram_sp_tb.v"
+  ],
+  "sim_status": "pass",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 660352,
+    "core_area_um2": 622583,
+    "cell_count": 28835,
+    "util_pct": 0.499152,
+    "wns_ns": -6.922910440859583,
+    "power_mw": 0.11922768503427505
+  },
+  "gds": "sram_sp.gds",
+  "png": "sram_sp.png",
+  "lines": 14,
+  "created_at": "2026-06-22T09:02:37.601831+00:00",
+  "updated_at": "2026-06-22T09:45:02.725254+00:00",
+  "sim_log": "\nVCD info: dumpfile design.vcd opened for output.\nPASS: single-port SRAM ok"
+}

@@ -1,0 +1,103 @@
+{
+  "id": "peripheral_spi_master_clocking_reset",
+  "name": "SPI Master Clocking Reset",
+  "category": "peripheral",
+  "subtitle": "SPI master module with clocking, reset, control, status, data, and SPI bus signals, includ",
+  "source": "faiss-dataset",
+  "top": "spi_master",
+  "ports": [
+    {
+      "name": "clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "rst_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "start_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "done_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "busy_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "data_i",
+      "dir": "input",
+      "width": "[(TRANSFER_WIDTH - 1):0]"
+    },
+    {
+      "name": "data_o",
+      "dir": "output",
+      "width": "[(TRANSFER_WIDTH - 1):0]"
+    },
+    {
+      "name": "spi_clk_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "spi_ss_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "spi_mosi_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "spi_miso_i",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "spi_master.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 40610.7,
+    "core_area_um2": 31610.9,
+    "cell_count": 1871,
+    "util_pct": 0.457847,
+    "wns_ns": 11.909496836919002,
+    "power_mw": 0.0003843611339107156
+  },
+  "gds": "spi_master.gds",
+  "png": "spi_master.png",
+  "lines": 172,
+  "created_at": "2026-06-22T14:17:36.691275+00:00",
+  "updated_at": "2026-06-22T14:41:04.892017+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 0,
+    "max_fanout": 0,
+    "hold_vio": 0,
+    "setup_wns_ns": 11.909,
+    "slow_corner_slew": 0,
+    "clean": true,
+    "failed": []
+  },
+  "tapeout_ready": true
+}

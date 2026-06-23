@@ -1,0 +1,10 @@
+{
+  "name": "ne16",
+  "repo": "https://github.com/pulp-platform/ne16",
+  "commit": "6bd727206d49",
+  "category": "accelerator",
+  "subtitle": "PULP NE16 neural-engine (conv) accelerator",
+  "rtl_files": 21,
+  "license": "LICENSE.hw",
+  "license_head": "SOLDERPAD HARDWARE LICENSE version 0.51\n\nThis license is based closely on the Apache License Version 2.0, but is not\napproved or endorsed by the Apache Foundation. A copy of the non-modified\nApache License 2.0 can be found at http://www.apache.org/licenses/LICENSE-2.0.\n\nAs this license is not currently OSI or FSF approved, the Licensor permits any\nWork licensed under this License, at the option of"
+}

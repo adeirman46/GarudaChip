@@ -1,0 +1,43 @@
+{
+  "id": "fir_filter",
+  "name": "fir_filter",
+  "category": "dsp",
+  "subtitle": "",
+  "source": "corpus:generated_fir_filter",
+  "top": "fir_filter",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "input_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "output_valid",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "shared_header.vh",
+    "fir_filter.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 459821,
+    "core_area_um2": 429287,
+    "cell_count": 26921,
+    "util_pct": 0.4738,
+    "wns_ns": -5.572666041907145,
+    "power_mw": 0.09063000231981277
+  },
+  "gds": "fir_filter.gds",
+  "png": "fir_filter.png",
+  "lines": 206,
+  "created_at": "2026-06-21T13:42:32.919772+00:00",
+  "updated_at": "2026-06-22T08:30:50.207517+00:00"
+}

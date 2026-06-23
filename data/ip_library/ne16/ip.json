@@ -1,0 +1,97 @@
+{
+  "id": "ne16",
+  "name": "ne16",
+  "category": "accelerator",
+  "subtitle": "PULP NE16 neural-engine (conv) accelerator",
+  "source": "clone:https://github.com/pulp-platform/ne16",
+  "top": "ne16_top_wrap",
+  "ports": [
+    {
+      "name": "clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "test_mode_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "busy_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "tcdm_gnt",
+      "dir": "input",
+      "width": "[MP-1:0]"
+    },
+    {
+      "name": "tcdm_wen",
+      "dir": "output",
+      "width": "[MP-1:0]"
+    },
+    {
+      "name": "tcdm_r_valid",
+      "dir": "input",
+      "width": "[MP-1:0]"
+    },
+    {
+      "name": "periph_gnt",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "periph_wen",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "periph_data",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "periph_r_data",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "periph_r_id",
+      "dir": "output",
+      "width": "[ID-1:0]"
+    }
+  ],
+  "rtl": [
+    "ne16_package.sv",
+    "ne16_ctrl.sv",
+    "ne16_binconv_column.sv",
+    "ne16_input_buffer_scm_test_wrap.sv",
+    "ne16_accumulator_normquant.sv",
+    "ne16_normquant.sv",
+    "ne16_accumulator_scm_test_wrap.sv",
+    "ne16_binconv_block.sv",
+    "ne16_normquant_shifter.sv",
+    "ne16_binconv_array.sv",
+    "ne16_top_wrap.sv",
+    "ne16_accumulator_scm.sv",
+    "ne16_engine.sv",
+    "ne16_ctrl_fsm.sv",
+    "ne16_scale.sv",
+    "ne16_input_buffer.sv",
+    "ne16_input_buffer_scm.sv",
+    "ne16_streamer.sv",
+    "ne16_normquant_multiplier.sv",
+    "ne16_top.sv",
+    "ne16_normquant_bias.sv"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 5902,
+  "created_at": "2026-06-22T14:24:48.420528+00:00",
+  "updated_at": "2026-06-22T14:24:48.420545+00:00"
+}

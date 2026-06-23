@@ -1,0 +1,121 @@
+{
+  "id": "ibex",
+  "name": "ibex",
+  "category": "core",
+  "subtitle": "Industrial-grade 2-stage RV32IMC (silicon-proven)",
+  "source": "clone:https://github.com/lowRISC/ibex",
+  "top": "ibex_ex_block",
+  "ports": [
+    {
+      "name": "clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "ibex_pkg",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "alu_operand_a_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "alu_instr_first_cycle_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "bt_b_operand_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "mult_en_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "mult_sel_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "multdiv_signed_mode_i",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "multdiv_operand_b_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "data_ind_timing_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "imd_val_d_o",
+      "dir": "output",
+      "width": "[33:0]"
+    },
+    {
+      "name": "imd_val_q_i",
+      "dir": "input",
+      "width": "[33:0]"
+    },
+    {
+      "name": "alu_adder_result_ex_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "branch_target_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "ex_valid_o",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "ibex_compressed_decoder.sv",
+    "ibex_alu.sv",
+    "ibex_core.sv",
+    "ibex_load_store_unit.sv",
+    "ibex_pkg.sv",
+    "ibex_decoder.sv",
+    "ibex_dummy_instr.sv",
+    "ibex_pmp.sv",
+    "ibex_ex_block.sv",
+    "ibex_multdiv_fast.sv",
+    "ibex_register_file_ff.sv",
+    "ibex_fetch_fifo.sv",
+    "ibex_prefetch_buffer.sv",
+    "ibex_controller.sv",
+    "ibex_cs_registers.sv",
+    "ibex_id_stage.sv",
+    "ibex_if_stage.sv",
+    "ibex_top.sv",
+    "ibex_lockstep.sv",
+    "ibex_wb_stage.sv",
+    "ibex_icache.sv",
+    "ibex_multdiv_slow.sv",
+    "ibex_csr.sv",
+    "ibex_counter.sv",
+    "ibex_top_tracing.sv",
+    "ibex_register_file_latch.sv",
+    "ibex_branch_predict.sv"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 18287,
+  "created_at": "2026-06-22T07:26:10.030306+00:00",
+  "updated_at": "2026-06-22T07:26:10.030320+00:00"
+}

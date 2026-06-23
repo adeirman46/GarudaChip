@@ -1,0 +1,69 @@
+{
+  "id": "verilog_uart",
+  "name": "verilog_uart",
+  "category": "peripheral",
+  "subtitle": "Lightweight UART TX/RX",
+  "source": "clone:https://github.com/alexforencich/verilog-uart",
+  "top": "uart",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tdata",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axis_tready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "m_axis_tvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rxd",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "tx_busy",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rx_overrun_error",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "prescale",
+      "dir": "input",
+      "width": "[15:0]"
+    }
+  ],
+  "rtl": [
+    "uart_rx.v",
+    "uart.v",
+    "uart_tx.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 37831.7,
+    "core_area_um2": 28978.8,
+    "cell_count": 1804,
+    "util_pct": 0.57026,
+    "wns_ns": 8.285656839601302,
+    "power_mw": 0.010096573270857334
+  },
+  "gds": "uart.gds",
+  "png": "uart.png",
+  "lines": 370,
+  "created_at": "2026-06-22T08:35:08.481946+00:00",
+  "updated_at": "2026-06-22T08:53:37.531482+00:00"
+}

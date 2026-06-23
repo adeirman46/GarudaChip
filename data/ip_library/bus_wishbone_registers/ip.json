@@ -1,0 +1,65 @@
+{
+  "id": "bus_wishbone_registers",
+  "name": "Wishbone Registers",
+  "category": "bus",
+  "subtitle": "Wishbone interface module with registers.",
+  "source": "faiss-dataset",
+  "top": "wb_sseg_ctrl",
+  "ports": [
+    {
+      "name": "wb_clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "async_rst_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_dat_i",
+      "dir": "input",
+      "width": "[dw-1:0]"
+    },
+    {
+      "name": "wb_we_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_stb_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_bte_i",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "wb_ack_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "wb_rty_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "seg_sel_o",
+      "dir": "output",
+      "width": "[n_digits-1:0]"
+    }
+  ],
+  "rtl": [
+    "wb_sseg_ctrl.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 160,
+  "created_at": "2026-06-21T14:57:13.365775+00:00",
+  "updated_at": "2026-06-22T14:40:06.148291+00:00"
+}

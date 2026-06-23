@@ -1,0 +1,60 @@
+{
+  "id": "zip_dsp",
+  "name": "zip_dsp",
+  "category": "dsp",
+  "subtitle": "FIR / CIC / boxcar DSP filter cores",
+  "source": "clone:https://github.com/ZipCPU/dspfilters",
+  "top": "boxcar",
+  "ports": [
+    {
+      "name": "i_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_ce",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_result",
+      "dir": "output",
+      "width": "[(OW-1):0]"
+    }
+  ],
+  "rtl": [
+    "delayw.v",
+    "slowfil_srl.v",
+    "dspswitch.v",
+    "slowsymf.v",
+    "smplfir.v",
+    "subfildown.v",
+    "lfsr_fib.v",
+    "shalfband.v",
+    "boxcar.v",
+    "iiravg.v",
+    "firtap.v",
+    "ratfil.v",
+    "histogram.v",
+    "lfsr_gal.v",
+    "cheapspectral.v",
+    "lfsr.v",
+    "genericfir.v",
+    "slowfil.v",
+    "fastfir.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 6951,
+  "created_at": "2026-06-22T14:24:50.677178+00:00",
+  "updated_at": "2026-06-22T14:24:50.677190+00:00"
+}

@@ -1,0 +1,154 @@
+{
+  "id": "cv32e40p",
+  "name": "cv32e40p",
+  "category": "core",
+  "subtitle": "4-stage RV32IMFCXpulp core with DSP extensions",
+  "source": "clone:https://github.com/openhwgroup/cv32e40p",
+  "top": "cv32e40p_if_stage",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "m_trap_base_addr_i",
+      "dir": "input",
+      "width": "[23:0]"
+    },
+    {
+      "name": "trap_addr_mux_i",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "dm_exception_addr_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "req_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "instr_addr_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "instr_rvalid_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "instr_err_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "instr_valid_id_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "is_compressed_id_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "pc_if_o",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "is_fetch_failed_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "pc_set_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "uepc_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "pc_mux_i",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "m_exc_vec_pc_mux_i",
+      "dir": "input",
+      "width": "[4:0]"
+    },
+    {
+      "name": "csr_mtvec_init_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "jump_target_ex_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "hwlp_target_i",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "id_ready_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "perf_imiss_o",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "cv32e40p_alu_div.sv",
+    "cv32e40p_popcnt.sv",
+    "cv32e40p_ff_one.sv",
+    "cv32e40p_register_file_latch.sv",
+    "cv32e40p_mult.sv",
+    "cv32e40p_id_stage.sv",
+    "cv32e40p_obi_interface.sv",
+    "cv32e40p_core.sv",
+    "cv32e40p_prefetch_controller.sv",
+    "cv32e40p_load_store_unit.sv",
+    "cv32e40p_apu_core_pkg.sv",
+    "cv32e40p_register_file_ff.sv",
+    "cv32e40p_apu_disp.sv",
+    "cv32e40p_sleep_unit.sv",
+    "cv32e40p_fp_wrapper.sv",
+    "cv32e40p_aligner.sv",
+    "cv32e40p_alu.sv",
+    "cv32e40p_fpu_pkg.sv",
+    "cv32e40p_int_controller.sv",
+    "cv32e40p_top.sv",
+    "cv32e40p_prefetch_buffer.sv",
+    "cv32e40p_if_stage.sv",
+    "cv32e40p_controller.sv",
+    "cv32e40p_decoder.sv",
+    "cv32e40p_compressed_decoder.sv",
+    "cv32e40p_cs_registers.sv",
+    "cv32e40p_fifo.sv",
+    "cv32e40p_hwloop_regs.sv",
+    "cv32e40p_ex_stage.sv",
+    "cv32e40p_pkg.sv"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 16677,
+  "created_at": "2026-06-22T07:26:12.201323+00:00",
+  "updated_at": "2026-06-22T07:26:12.201337+00:00"
+}

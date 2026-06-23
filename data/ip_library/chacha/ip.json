@@ -1,0 +1,73 @@
+{
+  "id": "chacha",
+  "name": "chacha",
+  "category": "crypto",
+  "subtitle": "ChaCha stream cipher",
+  "source": "clone:https://github.com/secworks/chacha",
+  "top": "chacha",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "addr",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "chacha_core.v",
+    "chacha.v",
+    "chacha_qr.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 1063060,
+    "core_area_um2": 1016060,
+    "cell_count": 57774,
+    "util_pct": 0.462201,
+    "wns_ns": -23.23086500031808,
+    "power_mw": 0.051052942872047424
+  },
+  "gds": "chacha.gds",
+  "png": "chacha.png",
+  "lines": 1108,
+  "created_at": "2026-06-22T08:53:32.315550+00:00",
+  "updated_at": "2026-06-23T13:27:12.757445+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 840,
+    "max_cap": 195,
+    "max_fanout": 137,
+    "hold_vio": 0,
+    "setup_wns_ns": -23.231,
+    "slow_corner_slew": 7026,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

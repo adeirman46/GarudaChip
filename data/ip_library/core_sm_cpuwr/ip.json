@@ -1,0 +1,62 @@
+{
+  "id": "core_sm_cpuwr",
+  "name": "CPU Write FSM",
+  "category": "core",
+  "subtitle": "Finite State Machine for CPU Write",
+  "source": "faiss-dataset",
+  "top": "sm_cpuwr",
+  "ports": [
+    {
+      "name": "ff_wr_pend",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cpu_wr_gnt",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "svga_ack",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cpu_wr_req",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "enwr_cpu_ad_da_pl",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "int_cpu_fifo_rd",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "cpu_arb_wr",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "sm_cpuwr.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 3894.39,
+    "core_area_um2": 1580.54,
+    "cell_count": 90,
+    "util_pct": 0.784722,
+    "wns_ns": 5.2896115651491655,
+    "power_mw": 0.00010761026351246983
+  },
+  "gds": "sm_cpuwr.gds",
+  "png": "sm_cpuwr.png",
+  "lines": 96,
+  "created_at": "2026-06-21T14:11:15.009582+00:00",
+  "updated_at": "2026-06-21T15:03:02.686261+00:00"
+}

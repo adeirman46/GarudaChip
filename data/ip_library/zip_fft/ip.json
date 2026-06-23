@@ -1,0 +1,63 @@
+{
+  "id": "zip_fft",
+  "name": "zip_fft",
+  "category": "dsp",
+  "subtitle": "Pipelined FFT core",
+  "source": "clone:https://github.com/ZipCPU/dblclockfft",
+  "top": "fftmain",
+  "ports": [
+    {
+      "name": "i_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_ce",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_sample",
+      "dir": "input",
+      "width": "[(2*IWIDTH-1):0]"
+    },
+    {
+      "name": "o_result",
+      "dir": "output",
+      "width": "[(2*OWIDTH-1):0]"
+    },
+    {
+      "name": "o_sync",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "ifftmain.v",
+    "hwbfly.v",
+    "laststage.v",
+    "windowfn.v",
+    "fftstage.v",
+    "fftmain.v",
+    "qtrstage.v",
+    "butterfly.v",
+    "bitreverse.v",
+    "longbimpy.v",
+    "bimpy.v",
+    "convround.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 6005,
+  "created_at": "2026-06-22T14:24:52.207604+00:00",
+  "updated_at": "2026-06-22T14:24:52.207617+00:00"
+}

@@ -1,0 +1,73 @@
+{
+  "id": "sha3",
+  "name": "sha3",
+  "category": "crypto",
+  "subtitle": "SHA-3 / Keccak hash core",
+  "source": "clone:https://github.com/secworks/sha3",
+  "top": "sha3",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "sha3_core.v",
+    "sha3.v"
+  ],
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 1146900,
+    "core_area_um2": 1097210,
+    "cell_count": 59582,
+    "util_pct": 0.44786,
+    "wns_ns": -15.06857614670221,
+    "power_mw": 0.06639999151229858
+  },
+  "gds": "sha3.gds",
+  "png": "sha3.png",
+  "lines": 863,
+  "created_at": "2026-06-22T08:53:31.083419+00:00",
+  "updated_at": "2026-06-23T13:07:27.362098+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 640,
+    "flow_errors": 0,
+    "max_slew": 262,
+    "max_cap": 21,
+    "max_fanout": 181,
+    "hold_vio": 0,
+    "setup_wns_ns": -15.069,
+    "slow_corner_slew": 8485,
+    "clean": false,
+    "failed": [
+      "synth_check",
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

@@ -1,0 +1,47 @@
+{
+  "id": "peripheral_uart_communication_clock_crossings",
+  "name": "UART Communication Clock Crossings",
+  "category": "peripheral",
+  "subtitle": "UART communication module with clock crossings.",
+  "source": "faiss-dataset",
+  "top": "comm_uart",
+  "ports": [
+    {
+      "name": "comm_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "uart_tx",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rx_new_golden_ticket",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "tx_new_work",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "tx_midstate",
+      "dir": "output",
+      "width": "[255:0]"
+    }
+  ],
+  "rtl": [
+    "comm_uart.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 195,
+  "created_at": "2026-06-22T14:17:37.363957+00:00",
+  "updated_at": "2026-06-22T14:45:53.202439+00:00"
+}

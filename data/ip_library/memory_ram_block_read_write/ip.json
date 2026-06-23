@@ -1,0 +1,103 @@
+{
+  "id": "memory_ram_block_read_write",
+  "name": "RAM Block Read Write",
+  "category": "memory",
+  "subtitle": "RAM block module with read/write functionality",
+  "source": "faiss-dataset",
+  "top": "deskew_ram_block",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "addrwr",
+      "dir": "input",
+      "width": "[15:0]"
+    },
+    {
+      "name": "addrrd1",
+      "dir": "input",
+      "width": "[15:0]"
+    },
+    {
+      "name": "addrrd2",
+      "dir": "input",
+      "width": "[15:0]"
+    },
+    {
+      "name": "datain",
+      "dir": "input",
+      "width": "[13:0]"
+    },
+    {
+      "name": "we",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "re",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "dataout1",
+      "dir": "output",
+      "width": "[13:0]"
+    },
+    {
+      "name": "dataout2",
+      "dir": "output",
+      "width": "[13:0]"
+    }
+  ],
+  "rtl": [
+    "deskew_ram_block.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 113462,
+    "core_area_um2": 98520.6,
+    "cell_count": 5500,
+    "util_pct": 0.482509,
+    "wns_ns": -5.151687222631586,
+    "power_mw": 0.015213302336633205
+  },
+  "gds": "deskew_ram_block.gds",
+  "png": "deskew_ram_block.png",
+  "lines": 242,
+  "created_at": "2026-06-22T14:17:37.391064+00:00",
+  "updated_at": "2026-06-22T14:50:10.938323+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 132,
+    "max_cap": 8,
+    "max_fanout": 15,
+    "hold_vio": 0,
+    "setup_wns_ns": -5.152,
+    "slow_corner_slew": 508,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

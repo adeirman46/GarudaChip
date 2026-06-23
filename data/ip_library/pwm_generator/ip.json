@@ -1,0 +1,42 @@
+{
+  "id": "pwm_generator",
+  "name": "pwm_generator",
+  "category": "peripheral",
+  "subtitle": "",
+  "source": "corpus:generated_pwm_generator",
+  "top": "pwm_generator",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "period",
+      "dir": "input",
+      "width": "[COUNTER_WIDTH-1:0]"
+    },
+    {
+      "name": "pwm_out",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "pwm_generator.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 13325.9,
+    "core_area_um2": 8381.27,
+    "cell_count": 527,
+    "util_pct": 0.658722,
+    "wns_ns": 6.92969523599956,
+    "power_mw": 0.0016441741026937962
+  },
+  "gds": "pwm_generator.gds",
+  "png": "pwm_generator.png",
+  "lines": 61,
+  "created_at": "2026-06-21T13:42:32.921463+00:00",
+  "updated_at": "2026-06-21T15:03:02.691395+00:00"
+}

@@ -1,0 +1,87 @@
+{
+  "id": "bus_axi_bram_reader",
+  "name": "AXI BRAM Reader",
+  "category": "bus",
+  "subtitle": "AXI-BRAM reader module with parameters, system signals, slave side, BRAM port, and logic f",
+  "source": "faiss-dataset",
+  "top": "axi_bram_reader",
+  "ports": [
+    {
+      "name": "aclk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_awaddr",
+      "dir": "input",
+      "width": "[AXI_ADDR_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axi_awready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "s_axi_wvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_bresp",
+      "dir": "output",
+      "width": "[1:0]"
+    },
+    {
+      "name": "s_axi_bready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_arvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axi_rdata",
+      "dir": "output",
+      "width": "[AXI_DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axi_rvalid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "bram_porta_clk",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "bram_porta_addr",
+      "dir": "output",
+      "width": "[BRAM_ADDR_WIDTH-1:0]"
+    },
+    {
+      "name": "integer",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "axi_bram_reader.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 12608.6,
+    "core_area_um2": 8128.83,
+    "cell_count": 500,
+    "util_pct": 0.768026,
+    "wns_ns": 1.0087273524211022,
+    "power_mw": 0.0007552366005256772
+  },
+  "gds": "axi_bram_reader.gds",
+  "png": "axi_bram_reader.png",
+  "lines": 108,
+  "created_at": "2026-06-21T14:11:14.710203+00:00",
+  "updated_at": "2026-06-21T15:03:02.691769+00:00"
+}

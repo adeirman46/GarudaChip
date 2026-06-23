@@ -1,0 +1,45 @@
+{
+  "id": "risc_v",
+  "name": "risc_v",
+  "category": "core",
+  "subtitle": "",
+  "source": "corpus:generated_risc_v",
+  "top": "riscv_core",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "instr_mem_addr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "data_mem_addr",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "data_mem_we",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "control_unit.v",
+    "alu.v",
+    "reg_file.v",
+    "imm_gen.v",
+    "riscv_core.v",
+    "alu_control.v"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 371,
+  "created_at": "2026-06-21T13:42:32.929158+00:00",
+  "updated_at": "2026-06-21T15:03:02.688408+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "poly1305",
+  "repo": "https://github.com/secworks/poly1305",
+  "commit": "7c9506713554",
+  "category": "crypto",
+  "subtitle": "Poly1305 MAC",
+  "rtl_files": 5,
+  "license": "LICENSE",
+  "license_head": "BSD 2-Clause License\n\nCopyright (c) 2018, Joachim Str\u00f6mbergson\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must rep"
+}

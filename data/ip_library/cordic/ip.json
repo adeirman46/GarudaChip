@@ -1,0 +1,57 @@
+{
+  "id": "cordic",
+  "name": "cordic",
+  "category": "dsp",
+  "subtitle": "",
+  "source": "corpus:generated_cordic",
+  "top": "cordic",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "enable",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "yi",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "xo",
+      "dir": "output",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "zo",
+      "dir": "output",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "i",
+      "dir": "input",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "cordic.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 441334,
+    "core_area_um2": 410059,
+    "cell_count": 25376,
+    "util_pct": 0.495091,
+    "wns_ns": -3.9410360534945434,
+    "power_mw": 0.21159285306930542
+  },
+  "gds": "cordic.gds",
+  "png": "cordic.png",
+  "lines": 143,
+  "created_at": "2026-06-21T13:42:32.914952+00:00",
+  "updated_at": "2026-06-21T15:03:02.704611+00:00"
+}

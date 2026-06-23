@@ -1,0 +1,57 @@
+{
+  "id": "memory_implementing_fifo_spi_communication",
+  "name": "Implementing FIFO SPI Communication",
+  "category": "memory",
+  "subtitle": "Module for implementing a FIFO with SPI communication. Includes a state machine, SPI and F",
+  "source": "faiss-dataset",
+  "top": "fifo_spi_dpram",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "nrst",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "we",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "din",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "dout",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "sck",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "ss",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "fifo_spi_dpram.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 249,
+  "created_at": "2026-06-22T14:17:36.620185+00:00",
+  "updated_at": "2026-06-22T14:50:12.258447+00:00"
+}

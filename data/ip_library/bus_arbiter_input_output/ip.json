@@ -1,0 +1,115 @@
+{
+  "id": "bus_arbiter_input_output",
+  "name": "Arbiter Input Output",
+  "category": "bus",
+  "subtitle": "Arbiter module with input/output signals.",
+  "source": "faiss-dataset",
+  "top": "etx_arbiter",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txwr_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txwr_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txwr_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrd_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrd_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrd_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrr_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrr_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrr_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "etx_rd_wait",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "etx_wr_wait",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "etx_cfg_wait",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "ctrlmode_bypass",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "ctrlmode",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "etx_access",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "etx_packet",
+      "dir": "output",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "etx_rr",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "etx_arbiter.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 150,
+  "created_at": "2026-06-21T14:57:13.415396+00:00",
+  "updated_at": "2026-06-22T14:36:45.628203+00:00"
+}

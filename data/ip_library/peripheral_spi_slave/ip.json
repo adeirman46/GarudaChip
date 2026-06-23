@@ -1,0 +1,82 @@
+{
+  "id": "peripheral_spi_slave",
+  "name": "SPI Slave",
+  "category": "peripheral",
+  "subtitle": "SPI slave interface code with logic for data transfer and synchronization.",
+  "source": "faiss-dataset",
+  "top": "spi_slave",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "reset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "spiclk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "spimosi",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "spimiso",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "spicsl",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "we",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "re",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "wdat",
+      "dir": "output",
+      "width": "[dsz-1:0]"
+    },
+    {
+      "name": "addr",
+      "dir": "output",
+      "width": "[asz-1:0]"
+    },
+    {
+      "name": "rdat",
+      "dir": "input",
+      "width": "[dsz-1:0]"
+    }
+  ],
+  "rtl": [
+    "spi_slave.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 35563.3,
+    "core_area_um2": 27382.9,
+    "cell_count": 1318,
+    "util_pct": 0.604698,
+    "wns_ns": 10.552802486100285,
+    "power_mw": 0.001700800727121532
+  },
+  "gds": "spi_slave.gds",
+  "png": "spi_slave.png",
+  "lines": 100,
+  "created_at": "2026-06-21T14:11:15.057221+00:00",
+  "updated_at": "2026-06-21T14:54:41.839565+00:00"
+}

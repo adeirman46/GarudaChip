@@ -1,0 +1,10 @@
+{
+  "name": "wishbone_interconnect",
+  "repo": "https://github.com/freecores/wb_conmax",
+  "commit": "c2597a192e7c",
+  "category": "bus",
+  "subtitle": "Wishbone conmax interconnect",
+  "rtl_files": 9,
+  "license": "",
+  "license_head": ""
+}

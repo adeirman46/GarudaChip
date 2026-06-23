@@ -1,0 +1,10 @@
+{
+  "name": "aes",
+  "repo": "https://github.com/secworks/aes",
+  "commit": "80dc4718e1dc",
+  "category": "crypto",
+  "subtitle": "AES-128/256 encrypt/decrypt",
+  "rtl_files": 7,
+  "license": "LICENSE",
+  "license_head": "Copyright (c) 2014, Joachim Str\u00f6mbergson\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification,\nare permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyr"
+}

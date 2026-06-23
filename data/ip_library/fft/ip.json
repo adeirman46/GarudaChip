@@ -1,0 +1,51 @@
+{
+  "id": "fft",
+  "name": "fft",
+  "category": "dsp",
+  "subtitle": "",
+  "source": "corpus:generated_fft",
+  "top": "SdfUnit",
+  "ports": [
+    {
+      "name": "clock",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "in_en",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "in_im",
+      "dir": "input",
+      "width": "[WIDTH-1:0]"
+    },
+    {
+      "name": "out_re",
+      "dir": "output",
+      "width": "[WIDTH-1:0]"
+    },
+    {
+      "name": "tw_addr",
+      "dir": "output",
+      "width": "[TW_ADDR_WIDTH-1:0]"
+    }
+  ],
+  "rtl": [
+    "Butterfly.v",
+    "SdfUnit2.v",
+    "DelayBuffer.v",
+    "SdfUnit.v",
+    "Multiply.v",
+    "Twiddle.v",
+    "FFT.v"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 731,
+  "created_at": "2026-06-21T13:42:32.917941+00:00",
+  "updated_at": "2026-06-21T15:03:02.705357+00:00"
+}

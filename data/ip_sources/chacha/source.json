@@ -1,0 +1,10 @@
+{
+  "name": "chacha",
+  "repo": "https://github.com/secworks/chacha",
+  "commit": "7eaba360df9f",
+  "category": "crypto",
+  "subtitle": "ChaCha stream cipher",
+  "rtl_files": 3,
+  "license": "LICENSE",
+  "license_head": "Copyright (c) 2013, Joachim Str\u00f6mbergson\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification,\nare permitted provided that the following conditions are met:\n\n  Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n  Redistributions in binary form must reproduce the above copyr"
+}

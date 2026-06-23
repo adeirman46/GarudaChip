@@ -1,0 +1,52 @@
+{
+  "id": "memory_filling_v_ram",
+  "name": "Filling V-RAM",
+  "category": "memory",
+  "subtitle": "This code is a module for filling a V-RAM with data. It contains AXI4 interface and state ",
+  "source": "faiss-dataset",
+  "top": "fillbox_act",
+  "ports": [
+    {
+      "name": "vram",
+      "dir": "input",
+      "width": "[27:0]"
+    },
+    {
+      "name": "height",
+      "dir": "input",
+      "width": "[9:0]"
+    },
+    {
+      "name": "done",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "bready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "burst_start",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "wstrb",
+      "dir": "output",
+      "width": "[3:0]"
+    }
+  ],
+  "rtl": [
+    "fillbox_act.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "sim",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 266,
+  "created_at": "2026-06-22T14:17:36.596358+00:00",
+  "updated_at": "2026-06-22T14:17:36.596569+00:00"
+}

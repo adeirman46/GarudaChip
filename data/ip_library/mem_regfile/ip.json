@@ -1,0 +1,52 @@
+{
+  "id": "mem_regfile",
+  "name": "Register File 2R1W",
+  "category": "memory",
+  "subtitle": "2-read / 1-write register file (CPU datapath)",
+  "source": "generated",
+  "top": "regfile",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "waddr",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    },
+    {
+      "name": "raddr1",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    },
+    {
+      "name": "raddr2",
+      "dir": "input",
+      "width": "[AW-1:0]"
+    }
+  ],
+  "rtl": [
+    "regfile.v"
+  ],
+  "tb": [
+    "regfile_tb.v"
+  ],
+  "sim_status": "pass",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 451322,
+    "core_area_um2": 419799,
+    "cell_count": 18212,
+    "util_pct": 0.459555,
+    "wns_ns": -6.80294240196092,
+    "power_mw": 0.07894027233123779
+  },
+  "gds": "regfile.gds",
+  "png": "regfile.png",
+  "lines": 14,
+  "created_at": "2026-06-22T09:02:54.549136+00:00",
+  "updated_at": "2026-06-22T13:40:53.106760+00:00",
+  "sim_log": "\nVCD info: dumpfile design.vcd opened for output.\nPASS: register file ok"
+}

@@ -1,0 +1,43 @@
+{
+  "id": "blake2s",
+  "name": "blake2s",
+  "category": "crypto",
+  "subtitle": "BLAKE2s hash core",
+  "source": "clone:https://github.com/secworks/blake2s",
+  "top": "blake2s",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "cs",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "address",
+      "dir": "input",
+      "width": "[7:0]"
+    },
+    {
+      "name": "read_data",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "blake2s_G.v",
+    "blake2s.v",
+    "blake2s_core.v",
+    "blake2s_m_select.v"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 1446,
+  "created_at": "2026-06-22T08:53:35.935793+00:00",
+  "updated_at": "2026-06-22T08:53:35.935805+00:00"
+}

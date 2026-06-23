@@ -1,0 +1,131 @@
+{
+  "id": "uart16550",
+  "name": "uart16550",
+  "category": "peripheral",
+  "subtitle": "16550-compatible UART",
+  "source": "clone:https://github.com/freecores/uart16550",
+  "top": "uart_top",
+  "ports": [
+    {
+      "name": "wb_clk_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_rst_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_adr_i",
+      "dir": "input",
+      "width": "[uart_addr_width-1:0]"
+    },
+    {
+      "name": "wb_dat_i",
+      "dir": "input",
+      "width": "[uart_data_width-1:0]"
+    },
+    {
+      "name": "wb_dat_o",
+      "dir": "output",
+      "width": "[uart_data_width-1:0]"
+    },
+    {
+      "name": "wb_we_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_stb_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_cyc_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_sel_i",
+      "dir": "input",
+      "width": "[3:0]"
+    },
+    {
+      "name": "wb_ack_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "int_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "srx_pad_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "stx_pad_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rts_pad_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "cts_pad_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "dtr_pad_o",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "dsr_pad_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "ri_pad_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "dcd_pad_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "baud_o",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "uart_tfifo.v",
+    "raminfr.v",
+    "uart_defines.v",
+    "uart_transmitter.v",
+    "uart_debug_if.v",
+    "timescale.v",
+    "uart_regs.v",
+    "uart_receiver.v",
+    "uart_top.v",
+    "uart_rfifo.v",
+    "uart_wb.v",
+    "uart_sync_flops.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 3616,
+  "created_at": "2026-06-22T08:34:49.964759+00:00",
+  "updated_at": "2026-06-22T08:52:34.737531+00:00"
+}

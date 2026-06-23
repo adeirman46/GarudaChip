@@ -1,0 +1,122 @@
+{
+  "id": "memory_prefetch",
+  "name": "Prefetch Buffer",
+  "category": "memory",
+  "subtitle": "This is a Verilog module. It contains inputs, outputs, registers and assigns for a memory ",
+  "source": "faiss-dataset",
+  "top": "prefetch",
+  "ports": [
+    {
+      "name": "i_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_rst",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_new_pc",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_clear_cache",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_stalled_n",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_pc",
+      "dir": "input",
+      "width": "[(AW-1):0]"
+    },
+    {
+      "name": "o_i",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_pc",
+      "dir": "output",
+      "width": "[(AW-1):0]"
+    },
+    {
+      "name": "o_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_wb_cyc",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_wb_stb",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_wb_we",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_wb_addr",
+      "dir": "output",
+      "width": "[(AW-1):0]"
+    },
+    {
+      "name": "o_wb_data",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "i_wb_ack",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_wb_stall",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_wb_err",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_wb_data",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "o_illegal",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "prefetch.v"
+  ],
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 30800.8,
+    "core_area_um2": 23372.3,
+    "cell_count": 1282,
+    "util_pct": 0.740302,
+    "wns_ns": 1000000043329398900000000000000000000000,
+    "power_mw": 0.0013184115523472428
+  },
+  "gds": "prefetch.gds",
+  "png": "prefetch.png",
+  "lines": 84,
+  "created_at": "2026-06-21T14:11:14.450306+00:00",
+  "updated_at": "2026-06-21T14:54:41.739054+00:00"
+}

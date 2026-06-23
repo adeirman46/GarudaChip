@@ -1,0 +1,116 @@
+{
+  "id": "qft_quantum_fourier_transform",
+  "name": "qft_quantum_fourier_transform",
+  "category": "accelerator",
+  "subtitle": "",
+  "source": "corpus:generated_qft_quantum_fourier_transform",
+  "top": "qft3_top",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "valid_in",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i100_r",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i100_i",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i101_r",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i101_i",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i110_r",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i110_i",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i111_r",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "i111_i",
+      "dir": "input",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f100_r",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f100_i",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f101_r",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f101_i",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f110_r",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f110_i",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f111_r",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    },
+    {
+      "name": "f111_i",
+      "dir": "output",
+      "width": "[`TOTAL_WIDTH-1:0]"
+    }
+  ],
+  "rtl": [
+    "crot_gate.v",
+    "shared_header.vh",
+    "sine_approx.v",
+    "x_gate.v",
+    "qft3_top.v",
+    "swap_gate.v",
+    "cosine_approx.v"
+  ],
+  "status": "rtl",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 586,
+  "created_at": "2026-06-21T13:42:32.924794+00:00",
+  "updated_at": "2026-06-21T15:03:02.704212+00:00"
+}

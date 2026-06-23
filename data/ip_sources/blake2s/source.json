@@ -1,0 +1,10 @@
+{
+  "name": "blake2s",
+  "repo": "https://github.com/secworks/blake2s",
+  "commit": "dbecf482a667",
+  "category": "crypto",
+  "subtitle": "BLAKE2s hash core",
+  "rtl_files": 4,
+  "license": "LICENSE",
+  "license_head": "BSD 2-Clause License\n\nCopyright (c) 2018, Assured AB\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the"
+}

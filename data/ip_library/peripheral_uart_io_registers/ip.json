@@ -1,0 +1,75 @@
+{
+  "id": "peripheral_uart_io_registers",
+  "name": "UART IO Registers",
+  "category": "peripheral",
+  "subtitle": "UART module with IO, registers, and logic.",
+  "source": "faiss-dataset",
+  "top": "serial_core",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "rx",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "tx",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rx_ready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "tx_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "data1",
+      "dir": "output",
+      "width": "[255:0]"
+    },
+    {
+      "name": "data2",
+      "dir": "output",
+      "width": "[255:0]"
+    },
+    {
+      "name": "data3",
+      "dir": "output",
+      "width": "[127:0]"
+    },
+    {
+      "name": "word",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "tx_busy",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "rx_busy",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "serial_core.v"
+  ],
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 117,
+  "created_at": "2026-06-21T14:57:13.339993+00:00",
+  "updated_at": "2026-06-22T14:34:25.217626+00:00"
+}

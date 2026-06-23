@@ -1,0 +1,93 @@
+{
+  "id": "bus_axi_stream_broadcast",
+  "name": "AXI Stream Broadcast",
+  "category": "bus",
+  "subtitle": "AXI stream interface module with broadcast.",
+  "source": "faiss-dataset",
+  "top": "axis_broadcast",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tdata",
+      "dir": "input",
+      "width": "[DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "s_axis_tvalid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tlast",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "s_axis_tdest",
+      "dir": "input",
+      "width": "[DEST_WIDTH-1:0]"
+    },
+    {
+      "name": "m_axis_tdata",
+      "dir": "output",
+      "width": "[M_COUNT*DATA_WIDTH-1:0]"
+    },
+    {
+      "name": "m_axis_tvalid",
+      "dir": "output",
+      "width": "[M_COUNT-1:0]"
+    },
+    {
+      "name": "m_axis_tlast",
+      "dir": "output",
+      "width": "[M_COUNT-1:0]"
+    },
+    {
+      "name": "m_axis_tdest",
+      "dir": "output",
+      "width": "[M_COUNT*DEST_WIDTH-1:0]"
+    }
+  ],
+  "rtl": [
+    "axis_broadcast.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 16159.4,
+    "core_area_um2": 10673.1,
+    "cell_count": 674,
+    "util_pct": 0.683875,
+    "wns_ns": 13.281070841223782,
+    "power_mw": 0.004303247667849064
+  },
+  "gds": "axis_broadcast.gds",
+  "png": "axis_broadcast.png",
+  "lines": 160,
+  "created_at": "2026-06-22T14:17:37.620442+00:00",
+  "updated_at": "2026-06-22T14:40:04.797517+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 0,
+    "max_fanout": 0,
+    "hold_vio": 0,
+    "setup_wns_ns": 13.281,
+    "slow_corner_slew": 11,
+    "clean": true,
+    "failed": []
+  },
+  "tapeout_ready": true
+}

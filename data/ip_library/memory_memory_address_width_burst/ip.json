@@ -1,0 +1,73 @@
+{
+  "id": "memory_memory_address_width_burst",
+  "name": "Memory Address Width Burst",
+  "category": "memory",
+  "subtitle": "This code defines a memory module with address width and burst options, including register",
+  "source": "faiss-dataset",
+  "top": "rom",
+  "ports": [
+    {
+      "name": "wb_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_adr_i",
+      "dir": "input",
+      "width": "[(ADDR_WIDTH + 2) - 1:2]"
+    },
+    {
+      "name": "wb_cyc_i",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "wb_bte_i",
+      "dir": "input",
+      "width": "[1:0]"
+    },
+    {
+      "name": "wb_ack_o",
+      "dir": "output",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "rom.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "hardened",
+  "metrics": {
+    "die_area_um2": 6701.24,
+    "core_area_um2": 3523.3,
+    "cell_count": 236,
+    "util_pct": 0.647352,
+    "wns_ns": 1000000043329398900000000000000000000000,
+    "power_mw": 8.581634028814733e-05
+  },
+  "gds": "rom.gds",
+  "png": "rom.png",
+  "lines": 97,
+  "created_at": "2026-06-22T14:17:36.973753+00:00",
+  "updated_at": "2026-06-22T14:28:11.971781+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 0,
+    "max_cap": 0,
+    "max_fanout": 0,
+    "hold_vio": 0,
+    "setup_wns_ns": 1000000043329398900000000000000000000000,
+    "slow_corner_slew": 0,
+    "clean": true,
+    "failed": []
+  },
+  "tapeout_ready": true
+}

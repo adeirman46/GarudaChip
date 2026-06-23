@@ -1,0 +1,127 @@
+{
+  "id": "memory_fifo_inputs_outputs_communication",
+  "name": "FIFO Inputs Outputs Communication",
+  "category": "memory",
+  "subtitle": "This code defines a FIFO module with various inputs and outputs for communication between ",
+  "source": "faiss-dataset",
+  "top": "etx_fifo",
+  "ports": [
+    {
+      "name": "sys_nreset",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "sys_clk",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "tx_lclk_div4",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrd_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrd_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrd_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txwr_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txwr_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txwr_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrr_access",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrr_packet",
+      "dir": "input",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrr_wait",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrd_fifo_access",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrd_fifo_packet",
+      "dir": "output",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrd_fifo_wait",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txrr_fifo_access",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txrr_fifo_packet",
+      "dir": "output",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txrr_fifo_wait",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "txwr_fifo_access",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "txwr_fifo_packet",
+      "dir": "output",
+      "width": "[PW-1:0]"
+    },
+    {
+      "name": "txwr_fifo_wait",
+      "dir": "input",
+      "width": ""
+    }
+  ],
+  "rtl": [
+    "etx_fifo.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 128,
+  "created_at": "2026-06-22T14:17:37.312014+00:00",
+  "updated_at": "2026-06-22T14:36:35.851936+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "sha3",
+  "repo": "https://github.com/secworks/sha3",
+  "commit": "cd7a088e7222",
+  "category": "crypto",
+  "subtitle": "SHA-3 / Keccak hash core",
+  "rtl_files": 2,
+  "license": "LICENSE",
+  "license_head": "Copyright (c) 2015, Joachim Str\u00f6mbergson\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyr"
+}

@@ -39,9 +39,16 @@ def init() -> bool:
         from sqlalchemy.dialects.postgresql import JSONB
         eng = create_engine(_DB_URL, pool_pre_ping=True, future=True)
         md = MetaData()
+        # a PROJECT groups many chats (each chat = an IP / design conversation)
+        Table("project", md,
+              Column("id", String, primary_key=True),
+              Column("name", String),
+              Column("created_at", DateTime(timezone=True)),
+              Column("updated_at", DateTime(timezone=True)))
         Table("chat", md,
               Column("id", String, primary_key=True),
               Column("title", String),
+              Column("project_id", String, index=True),
               Column("created_at", DateTime(timezone=True)),
               Column("updated_at", DateTime(timezone=True)))
         Table("message", md,
@@ -70,6 +77,7 @@ def init() -> bool:
         with eng.begin() as conn:
             conn.execute(sqltext("ALTER TABLE run ADD COLUMN IF NOT EXISTS queue JSONB"))
             conn.execute(sqltext("ALTER TABLE run ADD COLUMN IF NOT EXISTS pending VARCHAR"))
+            conn.execute(sqltext("ALTER TABLE chat ADD COLUMN IF NOT EXISTS project_id VARCHAR"))
         _engine, _ready = eng, True
         return True
     except Exception as exc:  # noqa: BLE001
@@ -79,7 +87,66 @@ def init() -> bool:
 
 
 # --- in-memory fallback (single-process) -----------------------------------
-_mem = {"chat": {}, "message": [], "run": {}}
+_mem = {"project": {}, "chat": {}, "message": [], "run": {}}
+
+
+# --- projects (group many chats / IPs) --------------------------------------
+def create_project(name: str) -> dict:
+    pid = new_id("proj")
+    row = {"id": pid, "name": (name or "New project")[:200],
+           "created_at": _now(), "updated_at": _now()}
+    if _engine:
+        _q("INSERT INTO project (id,name,created_at,updated_at) "
+           "VALUES (:id,:name,:created_at,:updated_at)", **row)
+    else:
+        _mem["project"][pid] = row
+    return _iso(row)
+
+
+def list_projects() -> list[dict]:
+    if _engine:
+        rows = _q("SELECT p.id, p.name, p.created_at, p.updated_at, "
+                  "COUNT(c.id) AS chats FROM project p "
+                  "LEFT JOIN chat c ON c.project_id = p.id "
+                  "GROUP BY p.id ORDER BY p.updated_at DESC NULLS LAST").mappings().all()
+        return [_iso(dict(r)) for r in rows]
+    out = []
+    for p in sorted(_mem["project"].values(), key=lambda x: x["updated_at"], reverse=True):
+        chats = sum(1 for c in _mem["chat"].values() if c.get("project_id") == p["id"])
+        out.append(_iso({**p, "chats": chats}))
+    return out
+
+
+def rename_project(project_id: str, name: str) -> None:
+    if _engine:
+        _q("UPDATE project SET name=:n, updated_at=:t WHERE id=:id",
+           n=name[:200], t=_now(), id=project_id)
+    elif project_id in _mem["project"]:
+        _mem["project"][project_id].update(name=name[:200], updated_at=_now())
+
+
+def delete_project(project_id: str, *, cascade: bool = False) -> None:
+    """Delete a project. cascade=True deletes its chats (+designs/knowledge); otherwise the
+    chats are just unfiled (project_id cleared) so nothing is lost."""
+    if cascade:
+        for c in list_chats(project_id=project_id):
+            delete_chat(c["id"])
+    if _engine:
+        _q("UPDATE chat SET project_id=NULL WHERE project_id=:id", id=project_id)
+        _q("DELETE FROM project WHERE id=:id", id=project_id)
+    else:
+        for c in _mem["chat"].values():
+            if c.get("project_id") == project_id:
+                c["project_id"] = None
+        _mem["project"].pop(project_id, None)
+
+
+def move_chat(chat_id: str, project_id: str | None) -> None:
+    if _engine:
+        _q("UPDATE chat SET project_id=:p, updated_at=:t WHERE id=:id",
+           p=project_id, t=_now(), id=chat_id)
+    elif chat_id in _mem["chat"]:
+        _mem["chat"][chat_id]["project_id"] = project_id
 
 
 def _q(sql, **params):
@@ -89,30 +156,36 @@ def _q(sql, **params):
 
 
 # --- chats ------------------------------------------------------------------
-def create_chat(title: str) -> dict:
+def create_chat(title: str, project_id: str | None = None) -> dict:
     cid = new_id("chat")
-    row = {"id": cid, "title": title[:200] or "New chat",
+    row = {"id": cid, "title": title[:200] or "New chat", "project_id": project_id,
            "created_at": _now(), "updated_at": _now()}
     if _engine:
-        _q("INSERT INTO chat (id,title,created_at,updated_at) "
-           "VALUES (:id,:title,:created_at,:updated_at)", **row)
+        _q("INSERT INTO chat (id,title,project_id,created_at,updated_at) "
+           "VALUES (:id,:title,:project_id,:created_at,:updated_at)", **row)
     else:
         _mem["chat"][cid] = row
     return _iso(row)
 
 
-def list_chats() -> list[dict]:
+def list_chats(project_id: str | None = None) -> list[dict]:
     if _engine:
-        rows = _q("SELECT id,title,created_at,updated_at FROM chat "
-                  "ORDER BY updated_at DESC NULLS LAST").mappings().all()
+        if project_id is not None:
+            rows = _q("SELECT id,title,project_id,created_at,updated_at FROM chat "
+                      "WHERE project_id=:p ORDER BY updated_at DESC NULLS LAST",
+                      p=project_id).mappings().all()
+        else:
+            rows = _q("SELECT id,title,project_id,created_at,updated_at FROM chat "
+                      "ORDER BY updated_at DESC NULLS LAST").mappings().all()
         return [_iso(dict(r)) for r in rows]
-    return [_iso(c) for c in sorted(_mem["chat"].values(),
-                                    key=lambda c: c["updated_at"], reverse=True)]
+    chats = [c for c in _mem["chat"].values()
+             if project_id is None or c.get("project_id") == project_id]
+    return [_iso(c) for c in sorted(chats, key=lambda c: c["updated_at"], reverse=True)]
 
 
 def get_chat(chat_id: str) -> dict | None:
     if _engine:
-        r = _q("SELECT id,title,created_at,updated_at FROM chat WHERE id=:id",
+        r = _q("SELECT id,title,project_id,created_at,updated_at FROM chat WHERE id=:id",
                id=chat_id).mappings().first()
         return _iso(dict(r)) if r else None
     return _iso(_mem["chat"].get(chat_id)) if chat_id in _mem["chat"] else None

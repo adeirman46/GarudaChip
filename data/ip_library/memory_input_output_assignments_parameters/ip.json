@@ -1,0 +1,87 @@
+{
+  "id": "memory_input_output_assignments_parameters",
+  "name": "Input Output Assignments Parameters",
+  "category": "memory",
+  "subtitle": "Module with input/output assignments, parameters, and FIFO instantiation.",
+  "source": "faiss-dataset",
+  "top": "vfabric_gep",
+  "ports": [
+    {
+      "name": "clock",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "resetn",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "i_addressin",
+      "dir": "input",
+      "width": "[ADDRESS_WIDTH-1:0]"
+    },
+    {
+      "name": "i_addressin_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_addressin_stall",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i_indexin",
+      "dir": "input",
+      "width": "[INDEX_WIDTH-1:0]"
+    },
+    {
+      "name": "i_indexin_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_indexin_stall",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "o_dataout",
+      "dir": "output",
+      "width": "[ADDRESS_WIDTH-1:0]"
+    },
+    {
+      "name": "i_stall",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "o_dataout_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "i_settings",
+      "dir": "input",
+      "width": "[CONFIG_WIDTH-1:0]"
+    },
+    {
+      "name": "i_offset_settings",
+      "dir": "input",
+      "width": "[ADDRESS_WIDTH-1:0]"
+    }
+  ],
+  "rtl": [
+    "vfabric_gep.v"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 63,
+  "created_at": "2026-06-22T14:17:36.883524+00:00",
+  "updated_at": "2026-06-22T14:26:09.696842+00:00"
+}
