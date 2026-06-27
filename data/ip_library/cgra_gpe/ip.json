@@ -1,0 +1,99 @@
+{
+  "id": "cgra_gpe",
+  "name": "CGRA Processing Element",
+  "category": "accelerator",
+  "subtitle": "One CGRA processing element (ALU+RF+config) \u2014 the tile replicated 24x",
+  "source": "cgra:GPE (github.com/JR-Wesley/CGRA)",
+  "top": "GPE",
+  "ports": [
+    {
+      "name": "clock",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_cfg_en",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_cfg_data",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_0",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_2",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_4",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_6",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_0",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "cgra_defs.svh",
+    "ALU.sv",
+    "ConfigMem_12.sv",
+    "DelayPipe.sv",
+    "GPE.sv",
+    "Muxn_12.sv",
+    "RF.sv"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_dirty",
+  "metrics": {
+    "die_area_um2": 594091,
+    "core_area_um2": 557230,
+    "cell_count": 33456,
+    "util_pct": 0.496679,
+    "wns_ns": -20.04789635490456,
+    "power_mw": 0.08941653370857239
+  },
+  "gds": "GPE.gds",
+  "png": "GPE.png",
+  "lines": 743,
+  "created_at": "2026-06-24T14:21:53.425684+00:00",
+  "updated_at": "2026-06-24T14:53:12.289017+00:00",
+  "signoff": {
+    "magic_drc": 0,
+    "magic_overlap": 0,
+    "route_drc": 0,
+    "antenna": 0,
+    "lvs": 0,
+    "design_violations": 0,
+    "synth_check": 0,
+    "flow_errors": 0,
+    "max_slew": 39,
+    "max_cap": 33,
+    "max_fanout": 62,
+    "hold_vio": 0,
+    "setup_wns_ns": -20.048,
+    "slow_corner_slew": 2465,
+    "clean": false,
+    "failed": [
+      "max_slew",
+      "max_cap",
+      "max_fanout",
+      "setup_timing"
+    ]
+  },
+  "tapeout_ready": false
+}

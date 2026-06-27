@@ -1,0 +1,24 @@
+hardening 1 IP(s): cgra_2x2
+
+── harden cgra_2x2 (top=CGRA) …
+   [16:00:52] INFO     Starting a new run of the 'Classic' flow with    flow.py:654
+   [16:00:52] INFO     Starting…                                  sequential.py:339
+   [16:00:52] VERBOSE  Running 'Verilator.Lint' at                     step.py:1138
+   [16:00:52] VERBOSE  Logging subprocess to                           step.py:1338
+   ────────────────────────── Lint Timing Errors Checker ──────────────────────────
+   [16:00:54] VERBOSE  Running 'Checker.LintTimingConstructs' at       step.py:1138
+   [16:00:54] INFO     Check for Lint Timing Errors clear.           checker.py:412
+   ───────────────────────────── Lint Errors Checker ──────────────────────────────
+   [16:00:54] VERBOSE  Running 'Checker.LintErrors' at                 step.py:1138
+   [16:00:54] INFO     Check for Lint errors clear.                  checker.py:131
+   [16:00:54] VERBOSE  Running 'Checker.LintWarnings' at               step.py:1138
+   [16:00:54] VERBOSE  Running 'Yosys.JsonHeader' at                   step.py:1138
+   [16:00:54] VERBOSE  Logging subprocess to                           step.py:1338
+   Successfully finished Verilog frontend.
+   Build succeeded: 0 errors, 0 warnings
+   [16:00:59] VERBOSE  Running 'Yosys.Synthesis' at                    step.py:1138
+   [16:00:59] VERBOSE  Logging subprocess to                           step.py:1338
+   Build succeeded: 0 errors, 0 warnings
+   Successfully finished Verilog frontend.
+   122.5. Finished fast OPT passes.
+   126.9. Finished fast OPT passes. (There is nothing left to do.)

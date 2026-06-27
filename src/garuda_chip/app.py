@@ -3976,6 +3976,27 @@ def _deep_generate(rec, ctx, feedback=""):
                 rec.caption(f"🧠 Recalled {len(items)} past error→fix lesson(s) from the knowledge store.")
     except Exception:  # noqa: BLE001
         pass
+    # AUTORESEARCH METHODS: recall self-improvement / codegen TECHNIQUES studied from method repos
+    # (kind='method', ingested by scripts/clone_autoresearch.py) — so the agent applies the same
+    # research→generate→evaluate→reflect→learn ideas that auto-kernel generators use.
+    methods_note = ""
+    try:
+        mem = get_memory()
+        if mem.enabled:
+            mitems = mem.recall(ctx["query"] + " hardware RTL generation self-improvement technique",
+                                kind="method", k=2)
+            mbody = "\n\n".join((it.get("text") or "")[:1400] for it in mitems if it.get("text"))
+            if mbody:
+                (design_dir / "context").mkdir(parents=True, exist_ok=True)
+                (design_dir / "context" / "methods.md").write_text(
+                    "# Autoresearch — self-improvement / codegen methods (studied repos)\n\n" + mbody)
+                methods_note = ("AUTORESEARCH METHODS: `context/methods.md` holds self-improvement / "
+                                "code-generation techniques recalled from studied method repos — apply "
+                                "the relevant approach (research the design + its pitfalls, adapt, then "
+                                "reflect on any failure).\n")
+                rec.caption(f"🔬 Recalled {len(mitems)} autoresearch method(s) from the knowledge store.")
+    except Exception:  # noqa: BLE001
+        pass
     # ANCHOR + ADAPT: if the researcher cloned a close-match repo to context/anchor/, the
     # generator COPIES the nearest module from it and EDITS it to the spec, instead of
     # writing from scratch (far more reliable for a 9B model — it edits working code). Other
@@ -4075,6 +4096,7 @@ def _deep_generate(rec, ctx, feedback=""):
             + anchor_note
             + ref_note
             + lessons_note
+            + methods_note
             + "EVERY write_file_disk of a .v file returns a COMPILE CHECK result — if it reports "
               "errors, FIX that file and write it again immediately; never leave a file broken.\n"
               "If your modules share `define macros, put them in rtl/params.vh, reference them WITH "

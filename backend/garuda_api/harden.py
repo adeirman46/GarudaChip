@@ -32,6 +32,37 @@ def available() -> bool:
     return shutil.which(LIBRELANE_BIN) is not None
 
 
+def _detect_clock(rtl_dir: Path, top: str, default: str) -> str:
+    """Return the top module's real clock port. Many IPs don't call it 'clk' (FIRRTL uses
+    'clock', PULP uses 'clk_i', …); a wrong CLOCK_PORT means registers aren't clocked and
+    synthesis dies with 'ABC: the network is combinational'. So: if `default` isn't an actual
+    input of `top`, auto-pick a clock-like input."""
+    import re as _re
+    text = ""
+    for p in list(rtl_dir.glob("*.v")) + list(rtl_dir.glob("*.sv")):
+        t = p.read_text(errors="replace")
+        if _re.search(rf"\bmodule\s+{_re.escape(top)}\b", t):
+            text = t
+            break
+    if not text:
+        return default
+    region = text[: text.find("endmodule") if "endmodule" in text else len(text)]
+    inputs = []
+    for m in _re.finditer(r"\binput\b[^;)\n]*?\b([A-Za-z_]\w*)\s*(?:,|\)|;|//|$)", region):
+        inputs.append(m.group(1))
+    # also catch ANSI 'input clock,' style names broadly
+    inputs += _re.findall(r"\binput\b(?:\s+(?:wire|reg|logic|signed))?\s+([A-Za-z_]\w*)", region)
+    inset = {i for i in inputs}
+    if default in inset:
+        return default
+    for pat in (r"^(clk|clock|clk_i|i_clk|clock_i|clk_in|aclk|hclk|sysclk|clkin)$",
+                r"clk", r"clock"):
+        for nm in inputs:
+            if _re.search(pat, nm, _re.I):
+                return nm
+    return default
+
+
 def _build_config(rtl_dir: Path, src_dir: Path, design_name: str, top: str,
                   clock_port: str, clock_period: float, core_util: int) -> dict:
     """Copy the top's module closure into ``src_dir`` and return the LibreLane config —
@@ -85,6 +116,7 @@ def harden_rtl(rtl_dir, work_dir, design_name: str, *, top: str = "",
         return {"ok": False, "gds": None, "png": None, "metrics": {}, "rc": -1,
                 "log": "librelane not on PATH"}
     top = top or pick_top(rtl_dir) or design_name
+    clock_port = _detect_clock(rtl_dir, top, clock_port)   # FIRRTL 'clock' / PULP 'clk_i' / …
     chip = work_dir / "chip"
     src = chip / "src"
     if chip.exists():

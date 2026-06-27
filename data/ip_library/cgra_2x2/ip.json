@@ -1,0 +1,398 @@
+{
+  "id": "cgra_2x2",
+  "name": "CGRA 2x2 Accelerator",
+  "category": "accelerator",
+  "subtitle": "Reconfigurable Coarse-Grained Reconfigurable Array (mesh of PEs)",
+  "source": "anchor:github.com/JR-Wesley/CGRA",
+  "top": "CGRA",
+  "ports": [
+    {
+      "name": "clock",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_cfg_en",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_cfg_data",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_0_read_data_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_0_read_data_bits",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_0_write_data_ready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_0_write_data_bits",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_1_read_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_1_read_data_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_1_write_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_1_write_data_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_1_cycle",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "io_hostInterface_2_read_data_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_2_read_data_bits",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_2_write_data_ready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_2_write_data_bits",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_3_read_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_3_read_data_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_3_write_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_3_write_data_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_3_cycle",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "io_hostInterface_4_read_data_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_4_read_data_bits",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_4_write_data_ready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_4_write_data_bits",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_5_read_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_5_read_data_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_5_write_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_5_write_data_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_5_cycle",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "io_hostInterface_6_read_data_ready",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_6_read_data_bits",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_6_write_data_ready",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_6_write_data_bits",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_hostInterface_7_read_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_7_read_data_valid",
+      "dir": "output",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_7_write_addr",
+      "dir": "input",
+      "width": "[5:0]"
+    },
+    {
+      "name": "io_hostInterface_7_write_data_valid",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_hostInterface_7_cycle",
+      "dir": "input",
+      "width": "[2:0]"
+    },
+    {
+      "name": "io_en_1",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_en_3",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_en_5",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_en_7",
+      "dir": "input",
+      "width": ""
+    },
+    {
+      "name": "io_in_1",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_3",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_5",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_7",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_9",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_in_11",
+      "dir": "input",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_1",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_3",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_5",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_7",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_9",
+      "dir": "output",
+      "width": "[31:0]"
+    },
+    {
+      "name": "io_out_11",
+      "dir": "output",
+      "width": "[31:0]"
+    }
+  ],
+  "rtl": [
+    "cgra_defs.svh",
+    "IOB.sv",
+    "Muxn.sv",
+    "ConfigMem.sv",
+    "IOB_12.sv",
+    "IOB_13.sv",
+    "IOB_14.sv",
+    "IOB_15.sv",
+    "IOB_16.sv",
+    "IOB_17.sv",
+    "IOB_18.sv",
+    "IOB_19.sv",
+    "IOB_20.sv",
+    "IOB_21.sv",
+    "IOB_22.sv",
+    "IOB_23.sv",
+    "ALU.sv",
+    "RF.sv",
+    "DelayPipe.sv",
+    "Muxn_12.sv",
+    "ConfigMem_12.sv",
+    "GPE.sv",
+    "GPE_1.sv",
+    "GPE_2.sv",
+    "GPE_3.sv",
+    "GPE_4.sv",
+    "GPE_5.sv",
+    "GPE_6.sv",
+    "GPE_7.sv",
+    "GPE_8.sv",
+    "GPE_9.sv",
+    "GPE_10.sv",
+    "GPE_11.sv",
+    "ALU_12.sv",
+    "GPE_12.sv",
+    "GPE_13.sv",
+    "GPE_14.sv",
+    "GPE_15.sv",
+    "GPE_16.sv",
+    "GPE_17.sv",
+    "GPE_18.sv",
+    "GPE_19.sv",
+    "GPE_20.sv",
+    "GPE_21.sv",
+    "GPE_22.sv",
+    "GPE_23.sv",
+    "ConfigMem_36.sv",
+    "Muxn_62.sv",
+    "Muxn_63.sv",
+    "GIB.sv",
+    "ConfigMem_37.sv",
+    "Muxn_65.sv",
+    "GIB_1.sv",
+    "GIB_2.sv",
+    "GIB_3.sv",
+    "GIB_4.sv",
+    "GIB_5.sv",
+    "GIB_6.sv",
+    "GIB_7.sv",
+    "ConfigMem_44.sv",
+    "GIB_8.sv",
+    "GIB_9.sv",
+    "GIB_10.sv",
+    "GIB_11.sv",
+    "GIB_12.sv",
+    "GIB_13.sv",
+    "GIB_14.sv",
+    "GIB_15.sv",
+    "GIB_16.sv",
+    "GIB_17.sv",
+    "GIB_18.sv",
+    "GIB_19.sv",
+    "GIB_20.sv",
+    "GIB_21.sv",
+    "GIB_22.sv",
+    "GIB_23.sv",
+    "GIB_24.sv",
+    "GIB_25.sv",
+    "GIB_26.sv",
+    "GIB_27.sv",
+    "GIB_28.sv",
+    "ConfigMem_64.sv",
+    "GIB_29.sv",
+    "GIB_30.sv",
+    "GIB_31.sv",
+    "GIB_32.sv",
+    "GIB_33.sv",
+    "GIB_34.sv",
+    "DelayPipe_48.sv",
+    "single_port_ram.sv",
+    "ConfigMem_69.sv",
+    "LSU.sv",
+    "DelayPipe_50.sv",
+    "ConfigMem_70.sv",
+    "LSU_1.sv",
+    "LSU_2.sv",
+    "LSU_3.sv",
+    "LSU_4.sv",
+    "LSU_5.sv",
+    "LSU_6.sv",
+    "LSU_7.sv",
+    "CGRA.sv"
+  ],
+  "tb": [],
+  "sim_status": "untested",
+  "status": "harden_failed",
+  "metrics": {},
+  "gds": null,
+  "png": null,
+  "lines": 21712,
+  "created_at": "2026-06-23T23:16:44.840066+00:00",
+  "updated_at": "2026-06-24T04:35:27.620678+00:00"
+}
