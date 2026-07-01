@@ -1,6 +1,6 @@
 import type {
   Chat, Floorplan, IP, IPLibraryResponse, KnowledgeStats, Message, Padframe,
-  Project, RunEvent, SimResult, SimWorkspace, SimWorkspaceMeta,
+  OllamaModel, Project, RunEvent, SimResult, SimWorkspace, SimWorkspaceMeta, SystemCaps,
 } from "./types";
 
 const J = { "Content-Type": "application/json" };
@@ -39,6 +39,14 @@ export const api = {
   },
   async knowledge(): Promise<KnowledgeStats> {
     return (await fetch("/api/knowledge/stats")).json();
+  },
+  /** Hardware-aware limits — used to size the context-window slider to the user's VRAM. */
+  async systemCaps(): Promise<SystemCaps> {
+    return getJSON("/api/system/caps");
+  },
+  /** Installed Ollama models for the model picker (+ the one in effect now). */
+  async systemModels(): Promise<{ models: OllamaModel[]; current: string }> {
+    return getJSON("/api/system/models");
   },
 
   /** Send a prompt (+ optional files); returns the started run id. */
@@ -154,7 +162,18 @@ export const api = {
     await fetch(`/api/sim/workspaces/${id}`, { method: "DELETE" });
   },
   async runSim(id: string, top?: string): Promise<SimResult> {
-    return (await fetch(`/api/sim/workspaces/${id}/run`, { method: "POST", headers: J, body: JSON.stringify({ top }) })).json();
+    const res = await fetch(`/api/sim/workspaces/${id}/run`, { method: "POST", headers: J, body: JSON.stringify({ top }) });
+    if (!res.ok) {
+      // The backend never 500s a sim (it returns a readable log); a non-2xx here means the
+      // REQUEST failed — almost always a stale workspace id (404) after a server restart or a
+      // deleted workspace. Surface it cleanly instead of rendering {detail} as a "compile error".
+      const body = await res.json().catch(() => ({}));
+      return {
+        ok: false, compiled: false, status: res.status, gone: res.status === 404,
+        log: (body && (body.detail || body.log)) || `run request failed (HTTP ${res.status})`,
+      };
+    }
+    return res.json();
   },
 
   // --- chip studio ----------------------------------------------------------

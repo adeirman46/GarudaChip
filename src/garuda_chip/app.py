@@ -40,7 +40,7 @@ from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 
-from llm import get_chat_model, get_embeddings, provider_label
+from llm import get_chat_model, get_embeddings, provider_label, set_model, set_num_ctx
 from memory_store import get_memory
 
 load_dotenv()
@@ -53,6 +53,13 @@ OUTPUT_DIR = REPO_ROOT / "output"          # <-- all results land here
 # 12 cycles is plenty; past that the design needs a replan, not more of the same.
 MAX_RETRIES = int(os.getenv("MAX_SIM_RETRIES", "12"))
 MAX_LINT_RETRIES = int(os.getenv("MAX_LINT_RETRIES", "10"))
+# When the fix loop can't make a design verifiable, REGENERATE the RTL from knowledge (a fresh
+# design attempt) instead of hardening an unverified one. Bounded so it can't loop forever.
+MAX_REGEN = int(os.getenv("MAX_REGEN", "1"))
+# When LibreLane fails on an RTL-level error (a synthesis/elaboration error that names a design
+# file — e.g. a construct the synth frontend rejects), feed that error back to the corrector and
+# RE-HARDEN, instead of dead-ending at rc=2. Bounded so a non-RTL failure (PnR/DRC) can't loop.
+MAX_HARDEN_FIX = int(os.getenv("MAX_HARDEN_FIX", "3"))
 LIBRELANE_BIN = os.getenv("LIBRELANE_BIN", "librelane")
 PDK = os.getenv("PDK", "gf180mcuD")
 PDK_ROOT = os.getenv("PDK_ROOT", os.path.expanduser("~/.ciel"))
@@ -402,10 +409,14 @@ _SUBPLAN_ASK = {
     "generate": ("List the RTL FILES to write for this design, in build order — ONE short line "
                  "each as 'filename — what it does', e.g. 'fixed_point_params.vh — Qm.n defines', "
                  "'alu.v — 8-bit ALU + flags', 'regfile.v — 32x8 register file'. List ONLY .v/.vh "
-                 "RTL files. Add a 'compute <X> LUT/weights in Python → rtl/<X>.mem' line ONLY if "
-                 "the design is genuinely data-driven (a function LUT to linearize, NN weights to "
-                 "train) — never a plain .py deliverable, and never for ordinary arithmetic the RTL "
-                 "does itself. 8-16 items."),
+                 "RTL files. Decide the breakdown YOURSELF from the spec — do NOT mirror any "
+                 "reference's file count. COLLAPSE repetition: an N-tile fabric / N-lane array / "
+                 "N-element bank is ONE PARAMETERIZED module instantiated N times (a `generate` "
+                 "loop) — ONE file, NEVER N near-identical files. Aim for the SMALLEST set of clean, "
+                 "reusable modules that covers the spec. Add a 'compute <X> LUT/weights in Python → "
+                 "rtl/<X>.mem' line ONLY if the design is genuinely data-driven (a function LUT to "
+                 "linearize, NN weights to train) — never a plain .py deliverable, and never for "
+                 "ordinary arithmetic the RTL does itself. 8-16 items."),
     "testbench": ("List the TEST CASES the self-checking testbench must cover — ONE short line "
                   "each: reset behaviour, each operation/instruction, corner cases (overflow, "
                   "hazards), and the expected check. 8-16 items."),
@@ -443,10 +454,10 @@ def _save_plan(design_dir, step: str, pts: List[str]) -> None:
 
 def _anchor_module_list(design_dir, limit: int = 120) -> List[tuple]:
     """(module_name, relpath) for every module DEFINED in the cloned anchor design under
-    context/anchor/. The architect bases the Module Map on THESE blocks — same decomposition,
-    adapt only widths/ports/ops — and the generator copies+adapts them. 'See what's inside the
-    anchor BEFORE planning the modules', so we never invent a block the references don't have
-    and then get stuck on a module with no working source to copy."""
+    context/anchor/. The architect reads these blocks as INSPIRATION for the Module Map (how a
+    similar design was decomposed) but designs its OWN parameterized decomposition; the generator
+    STUDIES the anchor and writes its own RTL. 'See what's inside the anchor BEFORE planning the
+    modules', so the plan is informed by real references rather than guessed."""
     adir = Path(design_dir) / "context" / "anchor"
     if not adir.exists():
         return []
@@ -861,11 +872,38 @@ def _subplan(rec, query, step, feedback="", design_dir=None) -> List[str]:
         if 3 < len(t) < 160 and not t.lower().startswith(("here", "output", "the design")):
             pts.append(t)
     pts = pts[:16]
+    if step == "generate":
+        pts = _sanitize_generate_plan(pts)            # no .py deliverables, fix bogus extensions
     if design_dir and pts:                          # lock it so the next entry reuses it
         _save_plan(design_dir, step, pts)
     if pts:
         rec.plan(pts)   # live checklist — items green as their files get written
     return pts
+
+def _sanitize_generate_plan(pts: List[str]) -> List[str]:
+    """Clean the generator's file plan so it can't derail the build:
+      • DROP any line whose deliverable is a `.py`/`.sh`/`.c` script — GarudaChip's policy is
+        'Python is a throwaway generator, NEVER a deliverable'. The local model keeps adding a
+        `system_init.py`; remove it so it isn't written into rtl/.
+      • FIX bogus HDL extensions the model invents: `.hf`→`.vh`, `.vhd`→`.vh`, `.gen`/`.rtl`→`.v`,
+        `.svh`/`.sv`/`.vh`/`.v` are kept; `.mem` (data file for $readmemh) is kept as-is.
+    The order and descriptions are otherwise preserved."""
+    _SCRIPT = (".py", ".sh", ".c", ".cpp", ".cc", ".pl", ".rb", ".js", ".ipynb")
+    _FIX = {".hf": ".vh", ".vhd": ".vh", ".gen": ".v", ".rtl": ".v", ".verilog": ".v"}
+    out: List[str] = []
+    for line in pts:
+        m = re.search(r"([A-Za-z0-9_]+)(\.[A-Za-z0-9]+)\b", line)
+        if not m:
+            out.append(line)
+            continue
+        ext = m.group(2).lower()
+        if ext in _SCRIPT:
+            continue                                  # illegal deliverable → drop the whole line
+        if ext in _FIX:
+            line = line.replace(m.group(1) + m.group(2), m.group(1) + _FIX[ext], 1)
+        out.append(line)
+    return out or pts
+
 
 VERILOG_PITFALLS = """COMMON VERILOG MISTAKES — CHECK YOUR CODE AGAINST EVERY ONE BEFORE REPLYING:
 1. UNPACKED-ARRAY RESET: for `reg [W-1:0] mem [0:N-1]` you CANNOT write `mem <= 0`,
@@ -1355,9 +1393,12 @@ def _is_useful_doc(text: str, source: str = "") -> bool:
     return True
 
 
-def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Document]:
+def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8,
+                deadline: "float | None" = None) -> List[Document]:
     """Crawl a handful of URLs (5 at a time) into Documents. Shared by the Web
-    Researcher and the on-demand 'fetch a web example of block X' tool."""
+    Researcher and the on-demand 'fetch a web example of block X' tool. `deadline` (an
+    absolute time.time() value) hard-caps the whole call so research can never stall."""
+    import time as _time
     try:
         import asyncio
         from crawl4ai import AsyncWebCrawler
@@ -1375,6 +1416,8 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
     gh = [u for u in urls if "github.com" in u]
     web = [u for u in urls if "github.com" not in u]
     for u in gh:
+        if deadline and _time.time() > deadline:       # out of time — stop fetching code
+            break
         code = _github_code_text(u)
         if code and len(code) > 200:
             out.append(Document(page_content=code[:8000], metadata={"source": u}))
@@ -1402,17 +1445,27 @@ def _crawl_urls(urls: List[str], rec: "Recorder", limit: int = 8) -> List[Docume
 
     try:
         if web:
-            asyncio.run(_crawl())
+            # Hard overall cap so a hung browser launch / slow page can never stall the pipeline.
+            # Per-URL is already 25s w/ 5-way concurrency; this bounds the whole batch. `out` is
+            # filled incrementally, so a timeout still returns whatever crawled in time. If a caller
+            # deadline is sooner, use that (so the whole research call stays inside its budget).
+            budget = float(os.getenv("GARUDA_CRAWL_BUDGET_S", str(min(150, 40 + 9 * len(web)))))
+            if deadline:
+                budget = max(5.0, min(budget, deadline - _time.time()))
+            asyncio.run(asyncio.wait_for(_crawl(), timeout=budget))
+    except asyncio.TimeoutError:
+        rec.warning(f"Crawl hit the {int(budget)}s budget — using the {len(out)} page(s) gathered so far.")
     except Exception as e:  # noqa: BLE001
         rec.warning(f"Crawl failed ({e}).")
     return out
 
 
-def _understand_prompt(query: str, design_dir, rec=None) -> str:
+def _understand_prompt(query: str, design_dir, rec=None, deadline: "float | None" = None) -> str:
     """STEP 1 of research (the user's flow): BEFORE hunting for code, search the prompt to
     UNDERSTAND what it is — crawl the top hit and keep a short gist (e.g. 'FazyRV is a minimal
     area-optimized RISC-V rv32i core'). Saved to context/understanding.md and shown, so the
-    code/anchor hunt (step 2) is grounded in what the term actually means — not a guess."""
+    code/anchor hunt (step 2) is grounded in what the term actually means — not a guess.
+    `deadline` (absolute time.time()) bounds the crawl so this never stalls research."""
     try:
         urls = _searxng_search(query, 4)
     except Exception:  # noqa: BLE001
@@ -1427,7 +1480,7 @@ def _understand_prompt(query: str, design_dir, rec=None) -> str:
         return ""
     if rec:
         rec.caption(f"🔎 STEP 1 — understanding what '{query[:80]}' means…")
-    docs = _crawl_urls(urls[:2], rec, limit=2) if rec else []
+    docs = _crawl_urls(urls[:2], rec, limit=2, deadline=deadline) if rec else []
     gist = ""
     for d in docs:
         t = re.sub(r"\s+", " ", (getattr(d, "page_content", "") or "")).strip()
@@ -1540,12 +1593,15 @@ def _download_github_code(repo_url: str, save, max_files: int = 6) -> None:
 
 
 def _download_references(urls: List[str], design_dir, rec: "Recorder" = None,
-                         max_repos: int = 4, max_files: int = 6, max_pdfs: int = 10) -> int:
+                         max_repos: int = 4, max_files: int = 6, max_pdfs: int = 10,
+                         deadline: "float | None" = None) -> int:
     """DOWNLOAD the actual reference artifacts found by the web researcher — PDF papers
     (arxiv/*.pdf) and real HDL code from GitHub — and store them in the knowledge store
     (blob → MinIO, row+embedding → pgvector). This is what makes the store grow with
-    real papers/code, not just crawled text snippets."""
+    real papers/code, not just crawled text snippets. `deadline` (absolute time.time())
+    stops the download loop early so it can never run past the research budget."""
     import requests
+    import time as _time
     refs = Path(design_dir) / "context" / "refs"
     refs.mkdir(parents=True, exist_ok=True)
     saved: List[Path] = []
@@ -1561,6 +1617,8 @@ def _download_references(urls: List[str], design_dir, rec: "Recorder" = None,
 
     pdfs = repos = 0
     for u in urls:
+        if deadline and _time.time() > deadline:       # out of budget — keep what we have
+            break
         try:
             is_pdf = u.endswith(".pdf") or "arxiv.org/abs/" in u or "arxiv.org/pdf/" in u
             if is_pdf and pdfs < max_pdfs:
@@ -1608,8 +1666,9 @@ def _repo_score(repo_url: str, query: str) -> int:
 
 
 def _clone_anchor_repo(repo_url: str, design_dir, rec=None, max_files: int = 24) -> int:
-    """Download MANY HDL files from ONE repo into context/anchor/<repo>/ — the ANCHOR the
-    generator copies+adapts. PRIMARY path is `git clone --depth 1` (NO GitHub API, so NO 60/hr
+    """Download MANY HDL files from ONE repo into context/anchor/<repo>/ — the reference the
+    generator STUDIES (it learns the approach, then writes its own RTL; it does not copy these).
+    PRIMARY path is `git clone --depth 1` (NO GitHub API, so NO 60/hr
     rate limit — the API was returning 0 files once the research burned the quota, which is what
     produced the tiny 2-file fallback design). The HTTP API is only a fallback. Returns count."""
     m = re.search(r"github\.com/([^/]+)/([^/#?]+)", repo_url)
@@ -1629,7 +1688,8 @@ def _clone_anchor_repo(repo_url: str, design_dir, rec=None, max_files: int = 24)
             proc = subprocess.run(
                 ["git", "clone", "--depth", "1", "--quiet",
                  f"https://github.com/{user}/{repo}.git", tmp],
-                capture_output=True, text=True, timeout=150)
+                capture_output=True, text=True,
+                timeout=float(os.getenv("GARUDA_CLONE_TIMEOUT_S", "90")))
             if proc.returncode == 0:
                 hdl = [p for p in Path(tmp).rglob("*")
                        if p.is_file() and p.suffix.lower() in (".v", ".sv", ".vh", ".svh")
@@ -1683,9 +1743,21 @@ def _clone_anchor_repo(repo_url: str, design_dir, rec=None, max_files: int = 24)
     return n
 
 
-def _anchor_paper(url: str, design_dir, rec=None) -> str | None:
+def _paper_relevant(text: str, query: str) -> bool:
+    """A downloaded paper is kept as an ANCHOR only if its text is correlated with the design —
+    this is what stops an off-topic arXiv hit (e.g. a cond-mat physics paper) or a crawled
+    Hugging-Face/landing page from becoming a 'reference' the generator wastes context on."""
+    try:
+        from extract import relevant_to
+        return relevant_to(text or "", query or "", min_overlap=2)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _anchor_paper(url: str, design_dir, rec=None, query: str = "") -> str | None:
     """Download ONE paper as an ANCHOR: the real PDF (text-extracted) when it's a PDF, else
-    the useful crawled text. Saved to context/anchor/papers/. Returns the on-disk path."""
+    the useful crawled text. Saved to context/anchor/papers/. Returns the on-disk path, or None
+    if the paper isn't actually about THIS design (uncorrelated → dropped, file deleted)."""
     import requests
     pdir = Path(design_dir) / "context" / "anchor" / "papers"
     pdir.mkdir(parents=True, exist_ok=True)
@@ -1703,6 +1775,11 @@ def _anchor_paper(url: str, design_dir, rec=None) -> str | None:
                     nm += ".pdf"
                 (pdir / nm).write_bytes(r.content)
                 txt = _extract_pdf_text(pdir / nm)
+                if query and txt and not _paper_relevant(txt, query):
+                    (pdir / nm).unlink(missing_ok=True)   # off-topic paper → don't anchor on it
+                    if rec:
+                        rec.caption(f"🗑 Skipped off-topic paper (not about this design): {nm}")
+                    return None
                 if txt:
                     (pdir / (nm + ".txt")).write_text(txt[:20000])
                 if rec:
@@ -1710,6 +1787,8 @@ def _anchor_paper(url: str, design_dir, rec=None) -> str | None:
                 return str((pdir / nm).relative_to(Path(design_dir)))
         docs = _crawl_urls([url], rec, limit=1)        # web page → only if useful (junk filtered)
         if docs and _is_useful_doc(docs[0].page_content, url):
+            if query and not _paper_relevant(docs[0].page_content, query):
+                return None                            # crawled page off-topic → skip
             nm = re.sub(r"[^\w]", "_", url)[-60:] + ".md"
             (pdir / nm).write_text(docs[0].page_content[:16000])
             return str((pdir / nm).relative_to(Path(design_dir)))
@@ -1735,15 +1814,18 @@ def _build_anchor_and_links(urls: List[str], design_dir, query: str, rec=None) -
     cloned = {a: _clone_anchor_repo(a, design_dir, rec) for a in gh_ranked[:1]}
     cloned = {k: v for k, v in cloned.items() if v}
 
-    # paper anchors: prefer real PDFs (arxiv/*.pdf) over web pages
+    # paper anchors: prefer real PDFs (arxiv/*.pdf) over web pages, but ONLY keep a paper whose
+    # text is actually about THIS design — _anchor_paper drops an off-topic hit (cond-mat physics,
+    # a HuggingFace landing page) so the generator isn't grounded on uncorrelated noise. We scan a
+    # few more candidates because some are now filtered out.
     papers_ranked = sorted(other, key=lambda u: (u.endswith(".pdf") or "arxiv" in u), reverse=True)
     paper_anchors: List[str] = []
     used = set()
-    for u in papers_ranked[:3]:
-        p = _anchor_paper(u, design_dir, rec)
+    for u in papers_ranked[:6]:
+        p = _anchor_paper(u, design_dir, rec, query=query)
+        used.add(u)                                   # tried (kept or skipped) → don't relist as a link
         if p:
             paper_anchors.append(u)
-            used.add(u)
         if len(paper_anchors) >= 2:
             break
 
@@ -1804,6 +1886,104 @@ def _recall_db_anchor(ctx, design_dir, rec=None, k: int = 3) -> int:
         return 0
 
 
+# "connect this with my previously-designed X" — reuse a PROVEN prior design AS-IS (instantiate it),
+# the opposite of the study-don't-copy anchor path.
+_CONNECT_VERB_RE = re.compile(
+    r"\b(connect|integrat|combin|attach|hook\s*up|interfac|bridge|plug\s*in|wire\s+(?:it|them|up|to)|"
+    r"talk\s+to|together\s+with)\w*\b", re.I)
+
+
+def _connect_designs(ctx, design_dir, rec=None) -> str:
+    """CROSS-PROJECT CONNECT: when the prompt asks to connect/integrate the new design WITH a design
+    the user already built (e.g. 'create a cgra 2x2 and connect it to my riscv 8-bit'), pull that
+    prior VERIFIED design's RTL out of the knowledge store into THIS design's rtl/ so the generator
+    can INSTANTIATE it as a submodule and wire it — instead of rewriting it from scratch. Returns a
+    generator instruction naming the reused files + the prior top to instantiate, or '' when there's
+    no connect intent or no matching prior design (then generation proceeds normally)."""
+    q = ctx.get("query") or ""
+    if not _CONNECT_VERB_RE.search(q):
+        return ""
+    try:
+        mem = get_memory()
+        if not getattr(mem, "enabled", False):
+            return ""
+        cur = Path(design_dir).name
+        # The phrase AFTER 'with/to/into' is the design to connect to ('… connect with riscv 8bit').
+        m = re.search(r"\b(?:with|to|into|onto|and)\s+(?:my\s+|the\s+|a\s+|an\s+|previously\s+|"
+                      r"prior\s+|existing\s+|earlier\s+)*(.{3,60})", q, re.I)
+        target = (m.group(1) if m else q).lower()
+        ttokens = {w for w in re.findall(r"[a-z0-9]+", target) if len(w) >= 2}
+        if not ttokens:
+            return ""
+        # known prior designs (distinct), with their original-query title for fuzzy matching
+        designs: dict[str, str] = {}
+        for row in mem.list_items(kind="design", limit=200) + mem.list_items(limit=400):
+            d = row.get("design") or ""
+            if d and d != cur:
+                designs.setdefault(d, row.get("title") or d)
+        best, best_score = None, 0
+        for d, title in designs.items():
+            htokens = {w for w in re.findall(r"[a-z0-9]+", f"{d} {title}".lower()) if len(w) >= 2}
+            score = len(ttokens & htokens)
+            if score > best_score:
+                best, best_score = d, score
+        if not best or best_score < 1:
+            return ""
+        # fetch the prior design's verified RTL files (skip testbenches) into rtl/
+        rtl = Path(design_dir) / "rtl"
+        rtl.mkdir(parents=True, exist_ok=True)
+        reused: list[str] = []
+        for row in mem.list_items(design=best, limit=200):
+            name = row.get("title") or ""
+            if not name.endswith((".v", ".vh", ".sv", ".svh")):
+                continue
+            if "tb" in name.lower() or "testbench" in name.lower() or "_tb" in name.lower():
+                continue
+            body = b""
+            okey = row.get("object_key") or ""
+            if okey:
+                body = mem.get_object(okey) or b""
+            if not body:
+                full = mem.get(row.get("id"))
+                body = (full or {}).get("text", "").encode() if full else b""
+            if not body or b"endmodule" not in body and not name.endswith((".vh", ".svh")):
+                continue
+            dest = rtl / name
+            if dest.exists():
+                continue
+            dest.write_bytes(body)
+            reused.append(name)
+        if not reused:
+            return ""
+        # name the prior design's TOP (the integration module to instantiate) via structural pick
+        prior_top = ""
+        try:
+            from verilog_check import pick_top
+            import tempfile
+            tmp = Path(tempfile.mkdtemp(prefix="connect_"))
+            for n in reused:
+                (tmp / n).write_bytes((rtl / n).read_bytes())
+            prior_top = pick_top(tmp) or ""
+            shutil.rmtree(tmp, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            prior_top = ""
+        if rec:
+            rec.success(f"🔗 Connecting with your prior design **{best}** — reused {len(reused)} "
+                        f"verified file(s): {', '.join(reused[:8])}"
+                        + (f" (top: `{prior_top}`)" if prior_top else ""))
+        topline = (f"Its top module is `{prior_top}` — instantiate THAT.\n" if prior_top else "")
+        return (
+            "🔗 CONNECT-WITH-A-PRIOR-DESIGN (do NOT rewrite these): the user asked to connect this "
+            f"design with their previously-built **{best}**. Its PROVEN, verified RTL is ALREADY in "
+            f"rtl/ — these files: {', '.join(reused)}. " + topline +
+            "Build ONLY the NEW glue: your new top module must INSTANTIATE the reused module(s) by "
+            "name (port-by-port), instantiate the new logic, and WIRE them together exactly as the "
+            "request describes. Do NOT modify, rename, or re-implement the reused files; do NOT "
+            "duplicate their modules. Keep their port names; add adapter logic if widths differ.\n")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _store_web_docs(docs, ctx) -> int:
     """Persist crawled paper/web TEXT into the knowledge store (kind=paper for web,
     code for GitHub) so it's semantically recallable in future runs."""
@@ -1811,6 +1991,11 @@ def _store_web_docs(docs, ctx) -> int:
     if not (getattr(mem, "enabled", False) and docs):
         return 0
     design = Path(ctx["design_dir"]).name
+    query = ctx.get("query", "")
+    try:
+        from extract import relevant_to
+    except Exception:  # noqa: BLE001
+        relevant_to = None
     n = 0
     for d in docs:
         src = d.metadata.get("source", "web") if hasattr(d, "metadata") else "web"
@@ -1818,6 +2003,10 @@ def _store_web_docs(docs, ctx) -> int:
         is_code = "github.com" in str(src)
         if not body or (not is_code and not _is_useful_doc(body, str(src))):
             continue                              # never store cookie/login/nav junk as a 'paper'
+        # drop a crawled page that has NOTHING to do with this design (uncorrelated noise) —
+        # code (HDL) is always kept; a web/paper page must share terms with the request.
+        if not is_code and relevant_to and not relevant_to(body, query):
+            continue
         kind = "code" if is_code else "paper"
         if mem.remember(kind, body[:6000], design=design, source=str(src),
                         title=str(src)[:120], tags="web"):
@@ -2163,6 +2352,16 @@ def agent_web(rec, ctx, feedback=""):
 
 
 def agent_generate(rec, ctx, feedback=""):
+    # REGENERATE pass: the previous RTL couldn't be verified, so we're writing it again. Fold the
+    # failure into the instruction so the new design fixes the root cause instead of repeating it.
+    regen = ctx.pop("_regen_reason", "")
+    if regen:
+        rec.caption("♻️ Regenerating the RTL from knowledge — the previous design wasn't verifiable.")
+        note = ("The PREVIOUS RTL for this design FAILED simulation/verification with:\n"
+                f"{regen}\n"
+                "Write a CORRECTED, synthesizable design that fixes the ROOT CAUSE of this failure. "
+                "Keep the same intended functionality; do not repeat the same mistake.")
+        feedback = (feedback + "\n\n" + note).strip() if feedback else note
     # run this node AS a deep agent (planning + web + files)
     if ctx.get("deep_steps"):
         return _deep_generate(rec, ctx, feedback)
@@ -2357,6 +2556,43 @@ def _anchor_reference_tb(design_dir: Path) -> tuple[str, str]:
     return p.read_text(errors="replace"), p.name
 
 
+def _behavior_brief(design_dir: Path, limit: int = 2600) -> tuple[str, list[str]]:
+    """Documented behavior of the module from the RESEARCH the pipeline already gathered:
+      • context/research.md / understanding.md — the web digest of how this block works;
+      • context/anchor/papers/*.txt|*.md — extracted text of the PDF paper(s) crawled for it.
+    Grounding the testbench in THIS means the expected protocol/values come from how the module
+    is documented to work on the internet + the paper — not numbers the local model invented.
+    Returns (brief_text, source_names); ('', []) when no research is on disk."""
+    ctxd = design_dir / "context"
+    chunks: list[str] = []
+    used: list[str] = []
+    budget = limit
+
+    def take(p: Path, cap: int) -> None:
+        nonlocal budget
+        if budget <= 0 or not p.is_file():
+            return
+        try:
+            txt = p.read_text(errors="replace").strip()
+        except Exception:  # noqa: BLE001
+            return
+        if not txt:
+            return
+        take_n = min(cap, budget)
+        chunks.append(f"--- {p.name} ---\n{txt[:take_n]}")
+        used.append(p.name)
+        budget -= take_n
+
+    # web/research digest first (most on-topic for "how it behaves"), then paper text
+    for nm in ("research.md", "understanding.md"):
+        take(ctxd / nm, 1400)
+    papers = ctxd / "anchor" / "papers"
+    if papers.is_dir():
+        for p in sorted(papers.glob("*.txt")) + sorted(papers.glob("*.md")):
+            take(p, 1000)
+    return ("\n\n".join(chunks), used)
+
+
 def agent_testbench(rec, ctx, feedback=""):
     # The testbench is a BOUNDED task: read the top module's ports, write ONE self-checking
     # tb. It is NOT run as a deep agent — the deep-agent path has no repetition breaker and
@@ -2391,6 +2627,20 @@ def agent_testbench(rec, ctx, feedback=""):
         "result (its stimulus sequence, expected values, $display checks, finish condition) so\n"
         "your PASS/FAIL matches the real design — do NOT invent unrelated expected values:\n"
         f"```\n{ref_src[:3000]}\n```\n" if ref_src else "")
+    # ALSO ground the EXPECTED behavior in the researched knowledge (web digest + PDF paper) of how
+    # this module is documented to work — so the checks reflect real, verifiable behavior, not
+    # numbers the model guessed. (User: "create the tb based on knowledge in internet of how that
+    # module works, also see the pdf paper — not just blindly create a tb that wasn't verifiable.")
+    brief, brief_srcs = _behavior_brief(Path(ctx["design_dir"]))
+    if brief:
+        rec.caption("📚 Grounding the expected behavior in the research + paper: "
+                    + ", ".join(brief_srcs[:6]))
+        reference += (
+            "\nDOCUMENTED BEHAVIOR (web research + the PDF paper gathered for this design) — derive the\n"
+            "stimulus, the EXPECTED outputs, the timing/protocol and the PASS condition from HOW the\n"
+            "module is documented to work below. The testbench must actually VERIFY this behavior\n"
+            "(self-check real values), not just toggle inputs and print PASSED:\n"
+            f"```\n{brief}\n```\n")
     llm = get_chat_model(temperature=0.2)
     prompt = ChatPromptTemplate.from_template(
         """Write a self-checking Verilog testbench for the top module.
@@ -2652,8 +2902,9 @@ def agent_fix_design(rec, ctx, feedback=""):
         return _deep_fix_design(rec, ctx, feedback)
     files = dict(ctx["decomposed_files"])
     # In the sim loop this is the simulation error; in the lint loop (sim already
-    # passed, so simulation_output is empty) it's the Verilator lint error.
-    err = ctx.get("simulation_output") or ctx.get("lint_output", "")
+    # passed, so simulation_output is empty) it's the Verilator lint error; in the harden
+    # loop (both empty) it's the LibreLane synthesis error naming the offending module.
+    err = ctx.get("simulation_output") or ctx.get("lint_output") or ctx.get("harden_error", "")
     faulty_list = _faulty_files(files, err, ctx.get("top_module_name", ""))
     rec.write("**Compiler/sim errors fed to the model** "
               f"(fixing {len(faulty_list)} file(s): {', '.join(faulty_list)}):")
@@ -2887,6 +3138,36 @@ def _show_librelane_steps(rec, chip_dir: Path):
     return run
 
 
+def _extract_harden_error(chip_dir: Path, lines: List[str]) -> str:
+    """Pull the RTL-level error out of a failed LibreLane run so the corrector can fix it and we
+    can RE-HARDEN (instead of dead-ending at rc=2). Returns the synthesis/elaboration error naming
+    a design file:line (the kind a module rewrite can fix), or '' when the failure is a non-RTL
+    PnR/DRC/infra problem that a module rewrite can't address (so we don't loop pointlessly).
+
+    Prefers LibreLane's own error.log (cleanest 'Last N lines'); falls back to scanning the streamed
+    output. The chip/src paths are rewritten to bare filenames so _faulty_files matches rtl/ files."""
+    blob = ""
+    for ep in sorted(glob.glob(str(chip_dir / "runs" / "**" / "error.log"), recursive=True)):
+        try:
+            blob = Path(ep).read_text(errors="replace")
+        except Exception:  # noqa: BLE001
+            blob = ""
+        if blob.strip():
+            break
+    if not blob.strip():
+        # fall back to the streamed log: keep the error lines + a little context
+        idx = [i for i, ln in enumerate(lines) if re.search(r"\bERROR\b|error:", ln)]
+        if idx:
+            lo = max(0, idx[0] - 2)
+            blob = "\n".join(lines[lo: idx[-1] + 2])
+    # an RTL error names a design source file with a line number, e.g. `pe_array.v:21: ERROR: ...`
+    if not re.search(r"\b[\w./-]+\.s?v:\d+", blob):
+        return ""                                  # PnR / DRC / infra failure — not a module fix
+    # strip the chip/src absolute path so `pe_array.v` matches the rtl/ file name in _faulty_files
+    blob = re.sub(r"\b[\w./-]*/src/(\w+\.s?v)", r"\1", blob)
+    return blob.strip()[:1800]
+
+
 def agent_harden(rec, ctx, feedback=""):
     design_dir = Path(ctx["design_dir"])
     design_name = _ensure_top(ctx, design_dir / "rtl") or slugify(ctx["query"])  # harden the real top
@@ -2939,9 +3220,14 @@ def agent_harden(rec, ctx, feedback=""):
               if absolute else
               {"FP_SIZING": "relative", "FP_CORE_UTIL": core_util})
     # USE THE SLANG FRONTEND for SystemVerilog designs — LibreLane's bundled yosys-with-plugins
-    # ships slang.so (verified), so `USE_SLANG=true` gives full SV synthesis. Enable it ONLY when
-    # the design actually has .sv/.svh (plain Verilog keeps the battle-tested default frontend).
-    has_sv = bool(list(rtl_dir.glob("*.sv")) + list(rtl_dir.glob("*.svh")))
+    # ships slang.so (verified), so `USE_SLANG=true` gives full SV synthesis. Enable it whenever the
+    # RTL uses SV constructs — detected by CONTENT, not just the .sv extension. Generators routinely
+    # emit SystemVerilog (unpacked-array ports like `input [31:0] x [0:N]`, `logic`, `always_ff`)
+    # inside .v files; that RTL passes Verilator sim/lint but makes the plain Verilog-2005 yosys
+    # frontend die ("syntax error, unexpected '['") → LibreLane rc=2, no GDS. needs_slang() catches
+    # that case so the design still hardens. Plain Verilog keeps the battle-tested default frontend.
+    from verilog_check import needs_slang
+    has_sv = needs_slang(rtl_dir)
     config = {
         "DESIGN_NAME": design_name, "VERILOG_FILES": design_files,
         "CLOCK_PORT": ctx["clock_port"], "CLOCK_PERIOD": ctx["clock_period"], "PDK": PDK,
@@ -3099,8 +3385,15 @@ def agent_harden(rec, ctx, feedback=""):
                             "findings). The GDS streams out, but those nets are FLOATING until they are "
                             "connected — so it's a layout, not yet a functional chip.")
         rec.json(metrics)
-    ctx["harden"] = {"gds": str(
-        final_gds) if final_gds else None, "metrics": metrics, "rc": proc.returncode}
+    # On failure, capture the RTL-level error so advance() can route it to the corrector and
+    # RE-HARDEN (the auto-fix loop). '' when the failure isn't a module-fixable one (PnR/DRC).
+    synth_err = "" if final_gds else _extract_harden_error(chip_dir, lines)
+    ctx["harden_error"] = synth_err
+    if synth_err:
+        rec.caption("🛠️ A synthesis error names a design file — I'll fix that module and "
+                    "re-harden automatically (no need to ask).")
+    ctx["harden"] = {"gds": str(final_gds) if final_gds else None, "metrics": metrics,
+                     "rc": proc.returncode, "error": synth_err}
 
 
 # --------------------------------------------------------------------------- #
@@ -3243,9 +3536,19 @@ def advance(run, node):
             cap = 3 if ctx.get("_design_compiles") else MAX_RETRIES
             if ctx.get("error_count", 0) < cap:
                 q[:0] = [route_next(ctx), "write", "simulate"]
+            elif ctx.get("_regen_count", 0) < MAX_REGEN:
+                # The fix loop couldn't make this design VERIFIABLE. Per the user: when it isn't
+                # verifiable, the generator writes the code AGAIN — regenerate the RTL from
+                # knowledge rather than hardening an unverified design. Carry the failure as
+                # context so the new attempt avoids the same mistake; fresh retry budget.
+                ctx["_regen_count"] = ctx.get("_regen_count", 0) + 1
+                ctx["_regen_reason"] = (ctx.get("simulation_output") or "")[:1500]
+                ctx["error_count"] = 0
+                ctx.pop("_sim_unverified", None)
+                q[:0] = ["generate", "decompose", "testbench", "write", "simulate"]
             elif "lint" not in q:
-                # do NOT dead-end (that's why a run never reached GDS) — a synthesizable design
-                # still hardens even if its testbench can't be made to pass; go lint → harden.
+                # regen budget also spent — do NOT dead-end (that's why a run never reached GDS):
+                # a synthesizable design still hardens even if its testbench can't pass; lint → harden.
                 ctx["_sim_unverified"] = True
                 q.insert(0, "lint")
         elif "lint" not in q:                         # sim passed → structural lint gate
@@ -3261,6 +3564,16 @@ def advance(run, node):
                 q.append("harden")
         elif ctx.get("run_harden"):                   # lint clean → harden if requested
             q.append("harden")
+    elif node == "harden":
+        # HARDEN AUTO-FIX LOOP: if LibreLane failed on an RTL-level error (a synthesis/elaboration
+        # error naming a design file), feed it to the corrector and RE-HARDEN — don't dead-end at
+        # rc=2 making the user type "do harden, if error, correct it". harden_error is '' for a
+        # non-RTL PnR/DRC failure (a module rewrite can't fix those), so we only loop when fixable.
+        h = ctx.get("harden") if isinstance(ctx.get("harden"), dict) else {}
+        if not h.get("gds") and ctx.get("harden_error"):
+            if ctx.get("_harden_fix_count", 0) < MAX_HARDEN_FIX:
+                ctx["_harden_fix_count"] = ctx.get("_harden_fix_count", 0) + 1
+                q[:0] = ["fix_design", "write", "harden"]
 
 
 def execute_step(run, node, feedback=""):
@@ -3997,10 +4310,15 @@ def _deep_generate(rec, ctx, feedback=""):
                 rec.caption(f"🔬 Recalled {len(mitems)} autoresearch method(s) from the knowledge store.")
     except Exception:  # noqa: BLE001
         pass
-    # ANCHOR + ADAPT: if the researcher cloned a close-match repo to context/anchor/, the
-    # generator COPIES the nearest module from it and EDITS it to the spec, instead of
-    # writing from scratch (far more reliable for a 9B model — it edits working code). Other
-    # sources are links in context/sources.md, fetched on demand only if the anchor misfits.
+    # CROSS-PROJECT CONNECT: if the prompt asks to connect this design with a prior one the user
+    # built (and verified to GDS), pull that design's RTL into rtl/ now so the generator instantiates
+    # it as a submodule instead of rewriting it. Done BEFORE pre_existing is computed so the reused
+    # files are protected as already-on-disk.
+    connect_note = _connect_designs(ctx, design_dir, rec)
+    # STUDY-THE-REFERENCE: if the researcher cloned a close-match repo to context/anchor/, the
+    # generator READS it to LEARN the approach (algorithm, interfaces, pitfalls) and then writes
+    # its OWN implementation — it does NOT copy the modules. Other sources are links in
+    # context/sources.md, studied on demand only if the reference doesn't cover a block.
     anchor_note = ""
     anchor_dir = design_dir / "context" / "anchor"
     # If the web researcher didn't clone an anchor (web off / thin results), anchor on the
@@ -4013,39 +4331,42 @@ def _deep_generate(rec, ctx, feedback=""):
     if anchor_files or papers:
         listing = "\n".join(f"  - {p.relative_to(design_dir)}" for p in (anchor_files[:24] + papers[:4]))
         anchor_note = (
-            "⚓ ANCHOR-AND-ADAPT (the preferred way — do this FIRST): the closest matching design(s) "
-            "are on disk under `context/anchor/` (RTL repos and/or paper text). For EACH module you "
-            "need: grep_files/read_file_disk the anchor for the nearest equivalent, then —\n"
-            "  • if it MATCHES the spec → COPY it almost VERBATIM (keep the working logic);\n"
-            "  • if it's CLOSE → copy it and EDIT only what the spec changes (widths, ports, ops);\n"
-            "  • NEVER write from a blank page when an anchor module fits.\n"
-            "Anchor files:\n" + listing + "\n"
-            "ONLY if NONE of the anchors fit a module: read `context/sources.md` and call "
-            "fetch_reference(<url>) to pull ONE better source, then adapt that. Keep YOUR context "
-            "small — peek slices, don't read whole files.\n")
-    # COPY+ADAPT: physically COPY the anchor's working modules into rtl/ as the starting point,
-    # so the agent ADAPTS them to the spec instead of reading them and re-typing a "simplified
-    # version" (the slow, inconsistent behaviour). Only on a FRESH rtl/ (else we're resuming).
+            "📚 STUDY-THE-REFERENCE (do this FIRST — it is KNOWLEDGE to learn from, NOT code to "
+            "copy): the closest matching design(s) are on disk under `context/anchor/` (RTL repos "
+            "and/or paper text). Use them to UNDERSTAND the problem, then WRITE YOUR OWN RTL:\n"
+            "  • grep_files/read_file_disk the reference to learn the ALGORITHM, the interfaces, the "
+            "corner cases and the pitfalls for each block you need;\n"
+            "  • then write your OWN clean, well-commented implementation adapted to THIS spec — do "
+            "NOT paste the reference verbatim, do NOT reproduce its file-for-file structure or its "
+            "module count;\n"
+            "  • decide your OWN module decomposition and COLLAPSE repetition into ONE parameterized "
+            "module instantiated N times (a `generate` loop), never N near-identical copies.\n"
+            "Reference material:\n" + listing + "\n"
+            "If a block isn't covered: read `context/sources.md` and fetch_reference(<url>) to study "
+            "ONE more source. Keep YOUR context small — peek slices, don't read whole files.\n")
+    # GENERATE-FROM-KNOWLEDGE: we do NOT copy the anchor's files into rtl/. The reference stays on
+    # disk under context/anchor/ as KNOWLEDGE to study (anchor_note above); the agent writes EVERY
+    # module ITSELF, with its OWN parameterized decomposition. This is the fix for designs that were
+    # just a renamed, file-for-file copy of the reference (e.g. 24 / 101 pasted blocks): the agent
+    # now reasons from the knowledge store and decides how many files the design actually needs.
     rtl_dir0 = design_dir / "rtl"
     pre_existing = [p.name for p in sorted(rtl_dir0.glob("*.vh")) + sorted(rtl_dir0.glob("*.svh"))
                     + sorted(rtl_dir0.glob("*.v")) + sorted(rtl_dir0.glob("*.sv"))] \
         if rtl_dir0.exists() else []
-    # DATA-DRIVEN designs (a LUT to compute, NN weights to train, a C/C++ kernel) must be GENERATED
-    # with run_python — NOT copied from an anchor. Skip seeding so the generator runs Python to emit
-    # the data (.mem) and writes the RTL around it, exactly as the user asked.
+    # DATA-DRIVEN designs (a LUT to compute, NN weights to train, a C/C++ kernel) compute their data
+    # with run_python and write the RTL around it.
     data_driven = _is_data_driven(ctx["query"]) or _is_data_driven(feedback)
     if data_driven and not pre_existing:
-        rec.caption("🧮 Data-driven design — computing the values in Python (run_python), "
-                    "not copying a reference.")
-    seeded = ([] if data_driven else _seed_rtl_from_anchor(design_dir, rec, ctx["query"])) \
-        if not pre_existing else []
+        rec.caption("🧮 Data-driven design — computing the values in Python (run_python).")
+    elif not pre_existing:
+        rec.caption("🧠 Generating the RTL from researched knowledge — the agent writes every "
+                    "module itself (the reference is studied, never copied).")
+    seeded: List[str] = []          # never seed by copying — the agent generates from knowledge
+    # .anchor_seeded is written ONLY by old copy-seeded runs; new runs never set it, so a fresh
+    # build always takes the genuine-generation path below. Kept for backward-compat resume of any
+    # design half-built by a previous (copy-seeding) version.
     marker = design_dir / "context" / ".anchor_seeded"
-    if seeded:
-        # mark the design as anchor-seeded (already per-module on disk) so decompose preserves the
-        # files verbatim with their consistent extension, instead of re-splitting them into .v.
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text("1")
-    ctx["_seeded"] = bool(seeded) or marker.exists()
+    ctx["_seeded"] = marker.exists()
 
     if ctx["_seeded"]:
         # the ONE plan = the modules on disk. Runs on a FRESH seed AND on RESUME (marker present),
@@ -4093,6 +4414,7 @@ def _deep_generate(rec, ctx, feedback=""):
             + resume_note
             + sub_note
             + _SUBPLAN
+            + connect_note
             + anchor_note
             + ref_note
             + lessons_note
@@ -4173,11 +4495,12 @@ def _deep_generate(rec, ctx, feedback=""):
         broken_note = "".join(
             f"- FIX rtl/{f} — its compile errors:\n{e[:500]}\n" for f, e in broken.items())
         ground = (
-            "For EVERY file below, do NOT write from a blank page or guess: FIRST "
-            "grep_files/read_file_disk the closest module in `context/anchor/` and COPY+ADAPT its "
-            "WORKING code (adapt only widths/ports/ops to the spec)."
-            + (" If no anchor module fits, read `context/sources.md` and fetch_reference(<url>) ONE "
-               "better source, then adapt that." if has_sources else "")
+            "For EVERY file below, ground your work in the references: grep_files/read_file_disk the "
+            "closest module in `context/anchor/` to UNDERSTAND the correct approach (algorithm, "
+            "interfaces, pitfalls), then WRITE YOUR OWN correct implementation adapted to the spec — "
+            "study it, don't paste it."
+            + (" If the references don't cover a block, read `context/sources.md` and "
+               "fetch_reference(<url>) ONE more source to study." if has_sources else "")
             + "\n" if (has_anchor or has_sources) else "")
         goal2 = (
             f"You are STILL generating RTL for: {ctx['query']}. Already written: {done_now}.\n"
@@ -4263,13 +4586,17 @@ def _deep_plan(rec, ctx, feedback=""):
     if anchor_mods:
         listing = "\n".join(f"- `{nm}` (in {src})" for nm, src in anchor_mods[:30])
         anchor_block = (
-            "\n\nINTERNAL — base the Module Map on EXACTLY these block names (this is the proven "
-            "decomposition for this design); use the SAME modules / boundaries and size them to the "
-            "spec above. Do NOT invent a different block structure. IMPORTANT: do NOT mention a "
-            "reference / anchor / source repo / file paths anywhere in the document — present the "
-            "module map as the design's OWN. Block names:\n" + listing)
-        rec.caption(f"🧩 Module map: {len(anchor_mods)} block(s) — "
-                    + ", ".join(nm for nm, _ in anchor_mods[:12]))
+            "\n\nINTERNAL — for INSPIRATION ONLY, here is how ONE reference design decomposed a "
+            "similar problem. Do NOT copy this list and do NOT match its count: DESIGN YOUR OWN "
+            "Module Map appropriate to THIS spec, deciding the modules and how many yourself. "
+            "CONSOLIDATE repetition — an N-element array / N-tile fabric / N-lane datapath is ONE "
+            "PARAMETERIZED module instantiated N times (a `generate` loop), NEVER N near-identical "
+            "blocks; a wide datapath is one parameterized module, not one per bit/byte. Aim for the "
+            "SMALLEST set of clean, parameterized, reusable modules that covers the spec. IMPORTANT: "
+            "do NOT mention a reference / anchor / source repo / file paths anywhere in the document "
+            "— present the Module Map as the design's OWN. Reference decomposition:\n" + listing)
+        rec.caption(f"🧩 Reference decomposition: {len(anchor_mods)} block(s) seen — designing our "
+                    "OWN parameterized module map (repeated/instanced blocks collapsed).")
     try:
         doc = clean_llm_output(stream_to(
             get_chat_model(temperature=0.3),
@@ -4291,14 +4618,15 @@ def _deep_plan(rec, ctx, feedback=""):
     elif not notes.exists():
         notes.write_text("# Build plan\n\n" + "\n".join(f"- [ ] {p}" for p in points))
     rec.success(f"📝 Grand plan + build contract → design_notes.md ({len(notes.read_text())} chars). "
-                "The planner does NOT write full RTL — generation copies+adapts the anchor.")
+                "The planner writes only the plan + interfaces — the generator writes every module "
+                "ITSELF from this knowledge (no copy-paste of the reference).")
     # SHOW the build contract as INLINE rendered markdown (NOT a dropdown) so the user can read
     # it directly and beautifully.
     rec.markdown("### 📄 Design notes — the build contract\n\n" + notes.read_text()[:8000])
-    # NOTE: the concrete file list is NOT locked here. Generation seeds rtl/ from the anchor and
-    # locks the plan to those copied files (one plan, matching what's actually built); if there is
-    # no anchor it falls back to a sub-plan there. Keeping the lock at generate avoids a second,
-    # conflicting module list (the inconsistency the user kept hitting).
+    # NOTE: the concrete file list is NOT locked here. Generation derives its OWN module list from
+    # the spec (the generate sub-plan), grounded in the researched knowledge — it does NOT copy the
+    # reference's files. Locking the plan at generate (not here) avoids a second, conflicting module
+    # list (the inconsistency the user kept hitting).
 
 
 def _deep_web(rec, ctx, feedback=""):
@@ -4329,12 +4657,20 @@ def _deep_web(rec, ctx, feedback=""):
         store the real code/PDFs. Takes NO arguments — it searches the user's request EXACTLY as
         written (you do NOT pass a query, keywords, or invented topics). Call this ONCE; calling
         again will not improve results."""
+        import time as _time
         _state["calls"] += 1
         if _state["calls"] > 1:                       # hard stop the retry loop
             n = len(ctx.get("documents", []))
             return (f"STOP — you already searched and have {n} reference(s). Do NOT call "
                     "web_research again; write the digest to context/research.md NOW from "
                     "what you have plus your own knowledge.")
+        # Wall-clock budget for the WHOLE research call: search + crawl always run, but the
+        # OPTIONAL full-repo clone / PDF download are skipped once we're over budget, so research
+        # can never stall the pipeline (the symptom: a run "stuck at research" forever).
+        _t0 = _time.time()
+        _budget = float(os.getenv("GARUDA_RESEARCH_BUDGET_S", "240"))
+        _deadline = _t0 + _budget
+        _over = lambda: (_time.time() - _t0) > _budget
         if problem and err_terms:
             # research the ACTUAL compiler/sim errors — what the user asked for — not the design
             main, similar = err_terms[0], err_terms[1:4]
@@ -4346,7 +4682,7 @@ def _deep_web(rec, ctx, feedback=""):
             # hallucinate one ('GF(2^8)/Galois field' for 'fazyrv rv32i 8 bit').
             main = ctx["query"]
             # STEP 1: understand what the prompt MEANS (crawl the top hit).
-            _understand_prompt(main, design_dir, rec)
+            _understand_prompt(main, design_dir, rec, deadline=_deadline)
             # STEP 2: find references for the FULL prompt + a few close 'similar' phrasings so the
             # search still lands pages when SearXNG is rate-limited and the exact wording is thin.
             sim = _design_variants(main, 2)
@@ -4356,23 +4692,28 @@ def _deep_web(rec, ctx, feedback=""):
         n_gh = sum("github.com" in u for u in urls)
         rec.write(f"🔎 Found **{len(urls)}** references — **{n_gh}** HDL GitHub repos (code) "
                   f"+ **{len(urls) - n_gh}** papers/web (knowledge); crawling…")
-        docs = _crawl_urls(urls, rec, limit=len(urls))
+        docs = _crawl_urls(urls, rec, limit=len(urls), deadline=_deadline)
         ctx.setdefault("documents", []).extend(docs)
-        _download_references(urls, design_dir, rec)   # real PDFs + code → knowledge store
         _store_web_docs(docs, ctx)
-        # ANCHOR + LINKS: clone the 1-2 best-match repos in full (copy+adapt), save the rest as
-        # links in context/sources.md (retrieve on demand). NOT problem-mode (errors don't anchor).
-        if not problem:
+        if not _over():
+            _download_references(urls, design_dir, rec, deadline=_deadline)   # PDFs + code → store
+        # ANCHOR + LINKS: clone the 1-2 best-match repos in full (to STUDY, not copy), save the rest
+        # as links in context/sources.md (retrieve on demand). NOT problem-mode (errors don't anchor).
+        if not problem and not _over():
             info = _build_anchor_and_links(urls, design_dir, ctx["query"], rec)
             ctx["_anchors"] = list(info.get("anchors", {}).keys())
+        elif _over():
+            rec.caption(f"⏱ Research budget ({int(_budget)}s) reached — skipping optional clone/download; "
+                        "writing the digest from what was gathered.")
         if not docs:
             return ("No pages crawled. Do NOT search again — write the digest from your own "
                     "knowledge of this design now.")
         gh = [d for d in docs if "github.com" in d.metadata.get("source", "")]
         web = [d for d in docs if "github.com" not in d.metadata.get("source", "")]
         head = (f"Done — crawled {len(gh)} GitHub repo(s) + {len(web)} paper/web page(s). "
-                "The closest repo(s) are CLONED to context/anchor/ (copy+adapt); other sources are "
-                "LINKS in context/sources.md. Now WRITE context/research.md; do NOT call web_research again.\n\n")
+                "The closest repo(s) are CLONED to context/anchor/ to STUDY (learn the approach, "
+                "then write your own RTL — do NOT copy them); other sources are LINKS in "
+                "context/sources.md. Now WRITE context/research.md; do NOT call web_research again.\n\n")
         return (head + "\n\n".join(f"{d.metadata.get('source','')}:\n{d.page_content[:400]}"
                                    for d in (gh[:3] + web[:3])))[:4000]
 
@@ -4488,7 +4829,7 @@ def _deep_fix_design(rec, ctx, feedback=""):
         "🧠 RLM deep-agent corrector — peeks the error log on disk, recalls past fixes, rewrites.")
     design_dir = Path(ctx["design_dir"])
     files = dict(ctx["decomposed_files"])
-    err = ctx.get("simulation_output") or ctx.get("lint_output", "")
+    err = ctx.get("simulation_output") or ctx.get("lint_output") or ctx.get("harden_error", "")
     faulty_list = _faulty_files(files, err, ctx.get("top_module_name", ""))
     attempt = ctx.get("error_count", 0) + ctx.get("lint_count", 0)
 
@@ -4662,14 +5003,19 @@ _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 
 def _extract_pdf_text(path: Path) -> str:
-    """Best-effort PDF → text (first 20 pages). Returns '' if pypdf isn't installed —
-    the agent can then pip_install pypdf and read it via run_python."""
+    """Best-effort PDF → text (first 20 pages) WITH OCR fallback for scanned/figure pages,
+    cleaned of references/header-footer chrome (see extract.py). '' only if there's truly no
+    text and OCR is unavailable."""
     try:
-        import pypdf
-        reader = pypdf.PdfReader(str(path))
-        return "\n".join((pg.extract_text() or "") for pg in reader.pages[:20]).strip()
+        from extract import pdf_to_text
+        return pdf_to_text(path)
     except Exception:  # noqa: BLE001
-        return ""
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(str(path))
+            return "\n".join((pg.extract_text() or "") for pg in reader.pages[:20]).strip()
+        except Exception:  # noqa: BLE001
+            return ""
 
 
 def _save_uploads(design_dir: Path, uploads) -> str:
@@ -4693,8 +5039,36 @@ def _save_uploads(design_dir: Path, uploads) -> str:
         rel = path.relative_to(design_dir)
         ext = path.suffix.lower()
         if ext in _IMAGE_EXT:
-            parts.append(f"### {name} (image · {len(data)} bytes)\nSaved at `{rel}`. "
-                         "Analyze it with run_python (e.g. PIL.Image / numpy) if you need its contents.")
+            # TRUE VISION FIRST: if the active model is multimodal (glm-4v / qwen-vl / llava / Gemini),
+            # let it UNDERSTAND the diagram — structure, blocks, connections, bit-widths — which OCR
+            # (flat text only) can't capture for a block diagram. Fall back to OCR when there's no
+            # vision model or the call fails, so an upload always yields SOME usable text.
+            vision = ""
+            try:
+                from llm import model_supports_vision, describe_image
+                if model_supports_vision():
+                    vision = (describe_image(path) or "").strip()
+            except Exception:  # noqa: BLE001
+                vision = ""
+            ocr = ""
+            try:
+                from extract import image_to_text
+                ocr = (image_to_text(path) or "").strip()
+            except Exception:  # noqa: BLE001
+                ocr = ""
+            if vision:
+                extra = (f"\n\nOCR text (verbatim labels, may help):\n```\n{ocr[:2000]}\n```" if ocr else "")
+                parts.append(f"### {name} (image · understood by the vision model below)\n"
+                             f"Saved at `{rel}`.\n{vision[:6000]}{extra}\n"
+                             "This is the model's reading of the diagram — build to it; "
+                             "open the image with run_python (PIL) only if you need a finer detail.")
+            elif ocr:
+                parts.append(f"### {name} (image · OCR text below)\nSaved at `{rel}`.\n"
+                             f"```\n{ocr[:6000]}\n```\n"
+                             "If you need finer detail (a diagram's layout), open it with run_python (PIL).")
+            else:
+                parts.append(f"### {name} (image · {len(data)} bytes)\nSaved at `{rel}`. "
+                             "Analyze it with run_python (e.g. PIL.Image / numpy) if you need its contents.")
         elif ext == ".pdf":
             text = _extract_pdf_text(path)
             parts.append(f"### {name} (PDF)\n{text[:6000]}" if text else
@@ -4709,11 +5083,13 @@ def _save_uploads(design_dir: Path, uploads) -> str:
 
 
 def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_util,
-            autonomous=True, deep_steps=True, uploads=None):
+            autonomous=True, deep_steps=True, uploads=None, num_ctx=None, model=None):
     design_dir = OUTPUT_DIR / slugify(prompt)
     if design_dir.exists():
         shutil.rmtree(design_dir)
     design_dir.mkdir(parents=True, exist_ok=True)
+    set_num_ctx(num_ctx)                             # apply the chosen context window to the model
+    set_model(model)                                 # apply the chosen Ollama model (picker)
     return {
         "ctx": {
             "query": prompt, "use_web": use_web, "design_dir": str(design_dir),
@@ -4722,7 +5098,7 @@ def new_run(prompt, use_web, run_harden, clock_port, clock_period, die_um, core_
             "generation": "", "simulation_output": "", "web_example": "",
             "lint_output": "", "lint_count": 0, "deep_steps": deep_steps,
             "run_harden": run_harden, "clock_port": clock_port, "clock_period": clock_period,
-            "die_um": die_um, "core_util": core_util,
+            "die_um": die_um, "core_util": core_util, "num_ctx": num_ctx, "model": model,
             "uploads_digest": _save_uploads(design_dir, uploads),
         },
         "queue": ["plan"],
@@ -4773,15 +5149,21 @@ def _continue_steps(msg: str):
 
 
 def continue_run(query, design_dir, feedback, run_harden, clock_port, clock_period, die_um,
-                 core_util, autonomous=True, deep_steps=True, prior_ctx=None):
+                 core_util, autonomous=True, deep_steps=True, prior_ctx=None, num_ctx=None,
+                 model=None):
     """CONTINUE an existing design from its SAVED STATE — do NOT wipe the folder or re-plan from
     scratch. Loads the prior run's full ctx (top module, decomposed files, harden result, fix
     history…), re-syncs rtl/ + tb/ from disk, fixes the top (never a leaf), and queues ONLY the
     steps the instruction asks for. This is precise resume-from-state for a chat follow-up."""
     design_dir = Path(design_dir)
     ctx = dict(prior_ctx) if isinstance(prior_ctx, dict) else {}
+    # the follow-up's context window / model wins; else keep what the prior run used
+    num_ctx = num_ctx if num_ctx else ctx.get("num_ctx")
+    model = model if model else ctx.get("model")
+    set_num_ctx(num_ctx)
+    set_model(model)                                 # apply the chosen Ollama model (picker)
     ctx.update({"query": ctx.get("query") or query, "design_dir": str(design_dir),
-                "use_web": False, "deep_steps": deep_steps,
+                "use_web": False, "deep_steps": deep_steps, "num_ctx": num_ctx, "model": model,
                 "clock_port": clock_port, "clock_period": clock_period,
                 "die_um": die_um, "core_util": core_util})
     # ensure every key the steps expect exists (saved values win)

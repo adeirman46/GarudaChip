@@ -71,12 +71,39 @@ class RunOpts(BaseModel):
     clock_period: float = 24.0
     die_um: float = 600.0
     core_util: int = 25
+    num_ctx: int | None = None      # Ollama context window (tokens); None → model default
+    model: str | None = None        # Ollama chat model (picker); None → OLLAMA_MODEL/.env
 
 
 # --- health -----------------------------------------------------------------
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/system/caps")
+def system_caps():
+    """Hardware-aware limits for the chat parameters — the context-window slider is sized to the
+    user's GPU VRAM (or RAM on CPU) so the chosen num_ctx's KV cache always fits."""
+    try:
+        from llm import recommended_ctx_limits, provider_label
+        caps = recommended_ctx_limits()
+        caps["model"] = provider_label()
+        return caps
+    except Exception:  # noqa: BLE001
+        return {"device": "cpu", "total_gb": 0.0, "num_ctx_min": 2048,
+                "num_ctx_max": 32768, "num_ctx_step": 2048, "num_ctx_default": 32768}
+
+
+@app.get("/api/system/models")
+def system_models():
+    """Installed Ollama chat models, so the UI can offer a model picker (all local — whatever the
+    user has pulled). `current` is the model in effect now."""
+    try:
+        from llm import current_model, list_ollama_models
+        return {"models": list_ollama_models(), "current": current_model()}
+    except Exception:  # noqa: BLE001
+        return {"models": [], "current": ""}
 
 
 @app.get("/api/knowledge/stats")

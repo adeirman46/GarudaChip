@@ -423,3 +423,39 @@ def full_report(rtl_dir: Path, top: str = "", only: Set[str] | None = None) -> s
     if audit:
         parts.append("--- cross-module audit ---\n" + "\n".join(audit[:25]))
     return "\n\n".join(parts)
+
+
+# SystemVerilog constructs that iverilog -g2012 / Verilator accept (so sim + lint pass) but the
+# plain Verilog-2005 yosys frontend REJECTS with "syntax error, unexpected '['" — the harden step
+# then dies (LibreLane rc=2) with no GDS, even though simulation passed. Routing such RTL through
+# USE_SLANG (yosys-slang) parses it correctly. We detect by CONTENT, not file extension, because
+# the generator emits SystemVerilog inside .v files.
+_SV_HINT_RE = re.compile(
+    r"\b(logic|bit|always_ff|always_comb|always_latch|typedef|interface|endinterface|"
+    r"modport|package|endpackage|priority|unique|\.\*)\b|\bstruct\s+packed\b|\bunion\s+packed\b")
+# An UNPACKED-array port: a dimension AFTER the signal name, e.g. `input [31:0] cfg_word [0:N-1]`.
+# (A packed-only port `input [31:0] data,` has its `[` BEFORE the name and does NOT match.)
+_UNPACKED_PORT_RE = re.compile(
+    r"\b(?:input|output|inout)\b[^;)\n]*?\b[A-Za-z_]\w*\s*\[[^\]]*\]\s*[,;)\n]")
+
+
+def needs_slang(rtl_dir: Path) -> bool:
+    """True when the RTL uses SystemVerilog constructs the Verilog-2005 yosys frontend can't
+    parse (unpacked-array ports, `logic`, `always_ff`, typedefs/interfaces/packed structs). Such
+    RTL passes Verilator sim/lint but makes plain yosys die at synthesis ("syntax error,
+    unexpected '['") so LibreLane returns rc=2 with no GDS. The harden config should set
+    USE_SLANG=true whenever this returns True — even for a design whose files are all named .v —
+    so it routes through yosys-slang and reaches GDSII. Checked by file CONTENT, not extension."""
+    rtl_dir = Path(rtl_dir)
+    files = (list(rtl_dir.glob("*.sv")) + list(rtl_dir.glob("*.svh"))
+             + list(rtl_dir.glob("*.v")) + list(rtl_dir.glob("*.vh")))
+    if any(p.suffix in (".sv", ".svh") for p in files):
+        return True
+    for p in files:
+        try:
+            t = _strip_comments(p.read_text(errors="replace"))
+        except Exception:  # noqa: BLE001
+            continue
+        if _UNPACKED_PORT_RE.search(t) or _SV_HINT_RE.search(t):
+            return True
+    return False

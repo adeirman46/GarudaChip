@@ -8,7 +8,7 @@ import { IPLibrary } from "./IPLibrary";
 import { KnowledgePanel } from "./Knowledge";
 import { Simulation } from "./Simulation";
 import { DEFAULT_CONSTRAINTS } from "./types";
-import type { Block, Chat, KnowledgeStats, Message, Project, RunConstraints, RunEvent, TranscriptRecord } from "./types";
+import type { Block, Chat, KnowledgeStats, Message, OllamaModel, Project, RunConstraints, RunEvent, SystemCaps, TranscriptRecord } from "./types";
 
 type View = "chat" | "ips" | "sim" | "studio" | "knowledge";
 const NAV: { key: View; icon: string; label: string }[] = [
@@ -227,6 +227,8 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [opts, setOpts] = useState<RunConstraints>({ ...DEFAULT_CONSTRAINTS });
+  const [caps, setCaps] = useState<SystemCaps | null>(null);
+  const [models, setModels] = useState<OllamaModel[]>([]);
   const [showConstraints, setShowConstraints] = useState(true);
   const streamRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<() => void>();
@@ -235,6 +237,21 @@ export default function App() {
     setOpts((o) => ({ ...o, [k]: v }));
 
   useEffect(() => { refreshChats(); refreshKnowledge(); refreshProjects(); }, []);
+  // Size the context-window slider to the user's GPU VRAM (or RAM on CPU) and adopt the
+  // hardware-aware default so num_ctx's KV cache always fits.
+  useEffect(() => {
+    api.systemCaps().then((c) => {
+      setCaps(c);
+      setOpts((o) => ({ ...o, num_ctx: Math.min(o.num_ctx || c.num_ctx_default, c.num_ctx_max) }));
+    }).catch(() => { /* keep the static default */ });
+  }, []);
+  // Load the installed Ollama models for the picker and adopt the active one as the default.
+  useEffect(() => {
+    api.systemModels().then((r) => {
+      setModels(r.models);
+      setOpts((o) => ({ ...o, model: o.model || r.current || r.models[0]?.name }));
+    }).catch(() => { /* picker just shows the static label */ });
+  }, []);
   // on reload, reopen the chat the user was in (reconnects to a live run via SSE replay)
   useEffect(() => {
     const last = localStorage.getItem("garuda-chat");
@@ -297,7 +314,8 @@ export default function App() {
     setChatId(null); setMessages([]); setTranscript([]); setRunId(null); setRunning(false);
     setPastRuns({}); setRunMsgId(null);
     setPendingProject(projectId);                // the next send creates the chat in this project
-    setOpts({ ...DEFAULT_CONSTRAINTS });
+    // keep the hardware-aware context window from caps + the chosen model; reset everything else
+    setOpts((o) => ({ ...DEFAULT_CONSTRAINTS, num_ctx: caps?.num_ctx_default ?? DEFAULT_CONSTRAINTS.num_ctx, model: o.model }));
     setShowConstraints(true);   // pop the constraints picker out on every new chat
   }
 
@@ -521,7 +539,25 @@ export default function App() {
          view === "studio" ? <ChipStudio /> : <>
         <div className="topbar">
           <span className="title">{chats.find((c) => c.id === chatId)?.title || "New chat"}</span>
-          <span className="pill">Ollama · qwen3.5:9b</span>
+          {models.length ? (
+            <select className="modelpick" title="Ollama model — runs the next message (☁ = cloud, runs on Ollama's servers; stronger for hard designs)"
+                    value={opts.model || ""} onChange={(e) => setOpt("model", e.target.value)}>
+              {models.map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.cloud ? "☁ " : ""}{m.name}{m.parameter_size ? ` · ${m.parameter_size}` : ""}{m.cloud ? " · cloud" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="pill">{caps?.model || "Ollama · qwen3.5:9b"}</span>
+          )}
+          {/* token/context shown WITH the model: a cloud model has no local context limit, so we
+              show "☁ cloud" instead of a token count (the slider is hidden in constraints too). */}
+          {models.find((m) => m.name === opts.model)?.cloud
+            ? <span className="pill cloudpill" title="Cloud model — context handled on Ollama's servers">☁ cloud</span>
+            : <span className="pill ctxpill" title="Context window (tokens) used for the next message">
+                {opts.num_ctx >= 1024 ? `${Math.round(opts.num_ctx / 1024)}k` : opts.num_ctx} tok
+              </span>}
           {running && <span className="running"><span className="dot" /> running…</span>}
           <span className="spacer" style={{ flex: 1 }} />
           <Artifacts chatId={chatId} refreshKey={artRefresh} />
@@ -603,7 +639,9 @@ export default function App() {
 
         <div className="composer">
           {showConstraints && (
-            <ConstraintsPanel opts={opts} setOpt={setOpt} onClose={() => setShowConstraints(false)} />
+            <ConstraintsPanel opts={opts} setOpt={setOpt} caps={caps}
+                              cloud={!!models.find((m) => m.name === opts.model)?.cloud}
+                              onClose={() => setShowConstraints(false)} />
           )}
           <div className="box">
             {files.length > 0 && (
@@ -731,11 +769,17 @@ function titleFor(node: TranscriptRecord): string {
   return node.node;
 }
 
-function ConstraintsPanel({ opts, setOpt, onClose }: {
+function ConstraintsPanel({ opts, setOpt, caps, cloud, onClose }: {
   opts: RunConstraints;
   setOpt: <K extends keyof RunConstraints>(k: K, v: RunConstraints[K]) => void;
+  caps: SystemCaps | null;
+  cloud?: boolean;
   onClose: () => void;
 }) {
+  const ctxMin = caps?.num_ctx_min ?? 2048;
+  const ctxMax = caps?.num_ctx_max ?? 32768;
+  const ctxStep = caps?.num_ctx_step ?? 2048;
+  const asK = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : `${n}`);
   return (
     <div className="constraints">
       <div className="chead">
@@ -759,6 +803,23 @@ function ConstraintsPanel({ opts, setOpt, onClose }: {
                  onChange={(e) => setOpt("core_util", Number(e.target.value))} />
           <span className="val">{opts.core_util}%</span>
         </label>
+        {cloud ? (
+          <label className="ctxwin">Context window
+            <span className="val">☁ cloud</span>
+            <span className="hint">handled on Ollama's servers — no local limit to set</span>
+          </label>
+        ) : (
+          <label className="ctxwin">Context window
+            <input type="range" min={ctxMin} max={ctxMax} step={ctxStep}
+                   value={Math.min(opts.num_ctx, ctxMax)}
+                   onChange={(e) => setOpt("num_ctx", Number(e.target.value))} />
+            <span className="val">{asK(opts.num_ctx)} tok</span>
+            <span className="hint">
+              max {asK(ctxMax)}
+              {caps ? ` · ${caps.device === "cuda" ? `${caps.total_gb} GB VRAM` : `${caps.total_gb} GB RAM (CPU)`}` : ""}
+            </span>
+          </label>
+        )}
       </div>
       <div className="ctoggles">
         <label><input type="checkbox" checked={opts.use_web}

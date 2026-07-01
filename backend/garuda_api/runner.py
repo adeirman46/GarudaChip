@@ -303,7 +303,8 @@ def start_run(*, chat_id: str, message_id: str, prompt: str,
             float(opts.get("clock_period", 24.0)), float(opts.get("die_um", 600.0)),
             int(opts.get("core_util", 25)),
             autonomous=True, deep_steps=opts.get("deep_steps", True),
-            prior_ctx=prior.get("ctx") if isinstance(prior.get("ctx"), dict) else None)
+            prior_ctx=prior.get("ctx") if isinstance(prior.get("ctx"), dict) else None,
+            num_ctx=opts.get("num_ctx"), model=opts.get("model"))
     else:
         run_obj = pipeline.new_run(
             prompt,
@@ -316,6 +317,8 @@ def start_run(*, chat_id: str, message_id: str, prompt: str,
             autonomous=True,
             deep_steps=opts.get("deep_steps", True),
             uploads=uploads,
+            num_ctx=opts.get("num_ctx"),
+            model=opts.get("model"),
         )
     design_dir = run_obj["ctx"]["design_dir"]
     rec = db.create_run(chat_id, message_id, prompt, design_dir)
@@ -527,6 +530,14 @@ def resume_run(*, chat_id: str, message_id: str) -> dict | None:
     if not design_dir or not Path(design_dir).exists():
         return None
     ctx["design_dir"] = design_dir
+    # re-apply the model + context window the run was started with, so resuming after a server
+    # restart (which clears the process-global overrides) uses the SAME Ollama model, not the default.
+    try:
+        from llm import set_model, set_num_ctx
+        set_model(ctx.get("model"))
+        set_num_ctx(ctx.get("num_ctx"))
+    except Exception:  # noqa: BLE001
+        pass
     # if the run had already drained its queue, decide a sensible continuation
     if not queue:
         if ctx.get("simulation_output"):

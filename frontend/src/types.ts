@@ -51,6 +51,17 @@ export interface RunConstraints {
   clock_period: number; // ns
   die_um: number;       // µm, square die
   core_util: number;    // %
+  num_ctx: number;      // Ollama context window (tokens) — slider sized to GPU VRAM
+  model?: string;       // Ollama chat model (picker) — empty/undefined → server default
+}
+
+// An installed Ollama model (GET /api/system/models) for the model picker.
+export interface OllamaModel {
+  name: string;
+  size: number;            // bytes (tiny for a cloud stub)
+  family?: string;
+  parameter_size?: string; // e.g. "9.0B"
+  cloud?: boolean;         // true → Ollama cloud model (runs on Ollama's servers, not this box)
 }
 
 export const DEFAULT_CONSTRAINTS: RunConstraints = {
@@ -61,7 +72,19 @@ export const DEFAULT_CONSTRAINTS: RunConstraints = {
   clock_period: 24,
   die_um: 600,
   core_util: 25,
+  num_ctx: 32768,
 };
+
+// Hardware-aware limits for the chat parameters (GET /api/system/caps).
+export interface SystemCaps {
+  device: string;        // "cuda" | "cpu"
+  total_gb: number;      // detected VRAM (cuda) or RAM (cpu)
+  num_ctx_min: number;
+  num_ctx_max: number;
+  num_ctx_step: number;
+  num_ctx_default: number;
+  model?: string;
+}
 
 // --- projects (group many chats / IPs) --------------------------------------
 export interface Project {
@@ -141,6 +164,8 @@ export interface SimResult {
   waveform?: Waveform | null;
   vcd?: boolean;
   hint?: string;
+  status?: number;   // HTTP status when the request itself failed (e.g. 404 stale workspace)
+  gone?: boolean;    // the workspace no longer exists on the server (stale selection)
 }
 
 // --- chip studio ------------------------------------------------------------

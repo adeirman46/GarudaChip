@@ -79,7 +79,11 @@ def _build_config(rtl_dir: Path, src_dir: Path, design_name: str, top: str,
         shutil.copy(p, src_dir / p.name)
         if p.suffix in (".v", ".sv"):
             design_files.append(f"dir::src/{p.name}")
-    has_sv = bool(list(rtl_dir.glob("*.sv")) + list(rtl_dir.glob("*.svh")))
+    # Enable the slang frontend whenever the RTL uses SystemVerilog constructs — by CONTENT, not
+    # just the .sv extension. SV inside .v files (unpacked-array ports, `logic`, `always_ff`) passes
+    # Verilator sim/lint but makes plain yosys die ("syntax error, unexpected '['") → no GDS.
+    from verilog_check import needs_slang
+    has_sv = needs_slang(rtl_dir)
     return {
         "DESIGN_NAME": top, "VERILOG_FILES": design_files,
         "CLOCK_PORT": clock_port, "CLOCK_PERIOD": clock_period, "PDK": PDK,

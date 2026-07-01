@@ -28,6 +28,12 @@ export function Simulation({ seedIP }: { seedIP?: string | null }) {
 
   async function openWs(id: string) {
     const w = await api.getWorkspace(id);
+    // a stale id (server restarted / workspace deleted) returns {detail} with no files —
+    // drop the selection and refresh the list instead of opening an empty, broken editor.
+    if (!w || !w.id || !w.files) {
+      setWs(null); refreshList();
+      return;
+    }
     setWs(w); setResult(null);
     const first = Object.keys(w.files)[0] || "";
     setActive(first); setDraft(w.files[first] || ""); setDirty(false);
@@ -52,6 +58,16 @@ export function Simulation({ seedIP }: { seedIP?: string | null }) {
     try {
       const r = await api.runSim(ws.id);
       setResult(r);
+      // workspace vanished server-side (stale id after a restart / deletion): re-sync the list
+      // and reopen the same workspace by id if it still exists, so the next Run targets a real one.
+      if (r.gone) {
+        const fresh = await api.listWorkspaces();
+        setList(fresh);
+        if (fresh.some((w) => w.id === ws.id)) { await openWs(ws.id); }
+        else { setWs(null); }
+        setTab("log");
+        return;
+      }
       setTab(r.waveform && r.waveform.signals.length ? "wave" : "log");
     } finally { setRunning(false); }
   }
@@ -123,7 +139,8 @@ export function Simulation({ seedIP }: { seedIP?: string | null }) {
               <button className={tab === "wave" ? "on" : ""} onClick={() => setTab("wave")}>Waveform</button>
               <button className={tab === "log" ? "on" : ""} onClick={() => setTab("log")}>Log</button>
               {result && <span className={"runverdict " + (result.compiled ? (result.ok ? "ok" : "warn") : "bad")}>
-                {result.compiled ? (result.vcd ? "✓ simulated" : "compiled") : "✗ compile error"}
+                {result.gone ? "⚠ workspace reloaded"
+                  : result.compiled ? (result.vcd ? "✓ simulated" : "compiled") : "✗ compile error"}
               </span>}
             </div>
             <div className="outbody">

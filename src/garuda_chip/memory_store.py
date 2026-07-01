@@ -65,6 +65,8 @@ _TEXT_EXT = {".v", ".vh", ".sv", ".svh", ".md", ".txt", ".log", ".json",
 _BIN_NOTE = {".gds": "GDSII layout", ".png": "image", ".jpg": "image",
              ".jpeg": "image", ".webp": "image", ".svg": "vector image",
              ".pdf": "PDF document", ".vcd": "waveform dump"}
+# Raster images we OCR on ingest (svg/vcd/gds are NOT raster → no OCR, just a note).
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 
 
 def _hash_id(*parts) -> str:
@@ -94,6 +96,38 @@ def _vec_literal(vec) -> str:
     return "[" + ",".join(f"{float(x):.6f}" for x in vec) + "]"
 
 
+def _env_on(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Reciprocal Rank Fusion constant (Cormack et al. 2009; the standard hybrid-search merge used by
+# Elasticsearch/Weaviate/RAG-Fusion). Larger k flattens the weight of top ranks.
+_RRF_K = 60
+
+
+def _rrf_fuse(ranked_lists: "list[list[dict]]", k: int = _RRF_K) -> "list[dict]":
+    """Merge several ranked candidate lists by Reciprocal Rank Fusion: an item's fused score is
+    sum(1 / (k + rank)) across the lists it appears in. Rank-based, so it combines incomparable
+    scales (cosine similarity vs. BM25/ts_rank) without tuning weights. Returns one de-duplicated
+    list ordered best-first, each item carrying its 'score' (the RRF score)."""
+    scores: dict = {}
+    items: dict = {}
+    for lst in ranked_lists:
+        for rank, it in enumerate(lst):
+            rid = it.get("id")
+            if rid is None:
+                continue
+            items.setdefault(rid, it)
+            scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank + 1)
+    fused = sorted(items.values(), key=lambda it: scores[it["id"]], reverse=True)
+    for it in fused:
+        it["score"] = scores[it["id"]]
+    return fused
+
+
 class MemoryStore:
     def __init__(self) -> None:
         self.db_url = os.getenv(
@@ -112,6 +146,7 @@ class MemoryStore:
         self._db_ready = False
         self._s3_ready = False
         self._vec_ready = False      # pgvector column + index created
+        self._fts_ready = False      # full-text (GIN) index created — the lexical half of hybrid
 
         if os.getenv("GARUDA_MEMORY", "1").lower() in ("0", "false", "no", "off"):
             logger.info("GarudaChip memory store disabled by GARUDA_MEMORY.")
@@ -204,6 +239,28 @@ class MemoryStore:
             logger.warning("pgvector setup failed: %s", exc)
             return False
 
+    _FTS_EXPR = "to_tsvector('english', coalesce(title,'') || ' ' || coalesce(text,''))"
+
+    def _ensure_fts(self) -> bool:
+        """Lazily build the GIN full-text index over title+text — the lexical (BM25-like) half of
+        hybrid retrieval. The index expression MUST match the query expression exactly for Postgres
+        to use it. No-op + returns False if the DB is down (recall then runs dense-only)."""
+        if self._fts_ready:
+            return True
+        if not self._db_ready:
+            return False
+        try:
+            from sqlalchemy import text as sqltext
+            with self._engine.begin() as conn:
+                conn.execute(sqltext(
+                    "CREATE INDEX IF NOT EXISTS knowledge_fts_idx ON knowledge "
+                    f"USING gin ({self._FTS_EXPR})"))
+            self._fts_ready = True
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("full-text index setup failed: %s", exc)
+            return False
+
     def _init_s3(self) -> None:
         try:
             import boto3
@@ -292,17 +349,15 @@ class MemoryStore:
                 logger.warning("remember row failed: %s", exc)
         return rid
 
-    def recall(self, query: str, *, kind: str | None = None, design: str | None = None,
-               k: int = 6) -> list[dict]:
-        """Semantic recall: embed the query and ORDER BY cosine distance in Postgres,
-        optionally filtered by kind/design. Returns the top-k items (each with its
-        title/source/text + MinIO object_key to fetch the raw file)."""
-        if not (self._db_ready and (query or "").strip() and self._ensure_vector()):
+    # --- retrieval stages (hybrid: dense + lexical → RRF → cross-encoder rerank) ----
+    def _dense_candidates(self, query: str, kind, design, n: int) -> list[dict]:
+        """Bi-encoder (pgvector cosine) recall — semantic, recall-oriented."""
+        if not (self._db_ready and self._ensure_vector()):
             return []
         try:
             from sqlalchemy import text as sqltext
             emb = _vec_literal(self._embeddings().embed_query(query))
-            conds, params = ["embedding IS NOT NULL"], {"emb": emb, "k": int(k)}
+            conds, params = ["embedding IS NOT NULL"], {"emb": emb, "k": int(n)}
             if kind:
                 conds.append("kind = :kind")
                 params["kind"] = kind
@@ -315,8 +370,88 @@ class MemoryStore:
                 "FROM knowledge WHERE " + " AND ".join(conds) +
                 " ORDER BY embedding <=> CAST(:emb AS vector) LIMIT :k")
             with self._engine.begin() as conn:
-                rows = conn.execute(sqltext(sql), params).mappings().all()
-            return [dict(r) for r in rows]
+                return [dict(r) for r in conn.execute(sqltext(sql), params).mappings().all()]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("dense recall failed: %s", exc)
+            return []
+
+    def _lexical_candidates(self, query: str, kind, design, n: int) -> list[dict]:
+        """Postgres full-text (BM25-like ts_rank_cd) recall — catches exact tokens the embedding
+        blurs: module/signal names, opcodes, error strings, part numbers. The other half of hybrid."""
+        if not (self._db_ready and self._ensure_fts()):
+            return []
+        try:
+            from sqlalchemy import text as sqltext
+            conds = [f"{self._FTS_EXPR} @@ plainto_tsquery('english', :q)"]
+            params = {"q": query, "k": int(n)}
+            if kind:
+                conds.append("kind = :kind")
+                params["kind"] = kind
+            if design:
+                conds.append("design = :design")
+                params["design"] = design
+            sql = (
+                "SELECT id, kind, design, source, title, text, object_key, "
+                f"       ts_rank_cd({self._FTS_EXPR}, plainto_tsquery('english', :q)) AS score "
+                "FROM knowledge WHERE " + " AND ".join(conds) +
+                " ORDER BY score DESC LIMIT :k")
+            with self._engine.begin() as conn:
+                return [dict(r) for r in conn.execute(sqltext(sql), params).mappings().all()]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("lexical recall failed: %s", exc)
+            return []
+
+    def _rerank(self, query: str, items: list[dict], k: int) -> list[dict]:
+        """Cross-encoder reranking — read each (query, passage) pair JOINTLY and re-score, then keep
+        the top-k. This is the precision stage that lets a small-context model thrive: we retrieve
+        broadly, then feed only the few genuinely-relevant chunks. Falls back to input order if the
+        reranker is unavailable."""
+        if not items:
+            return items
+        try:
+            from llm import get_reranker
+            ce = get_reranker()
+            if ce is None:
+                return items[:k]
+            pairs = [(query, ((it.get("title") or "") + "\n" + (it.get("text") or ""))[:2000])
+                     for it in items]
+            scores = ce.predict(pairs)
+            for it, s in zip(items, scores):
+                it["score"] = float(s)
+            return sorted(items, key=lambda it: it["score"], reverse=True)[:k]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("rerank failed: %s", exc)
+            return items[:k]
+
+    def recall(self, query: str, *, kind: str | None = None, design: str | None = None,
+               k: int = 6, hybrid: bool | None = None, rerank: bool | None = None) -> list[dict]:
+        """Retrieve the top-k knowledge items for `query` (optionally filtered by kind/design),
+        each with its title/source/text + MinIO object_key. Pipeline:
+
+          dense (pgvector) + lexical (full-text)  →  Reciprocal Rank Fusion  →  cross-encoder rerank
+
+        Hybrid retrieval + reranking sharply raises the relevance of the FEW chunks fed to the
+        small-context local model, so each context token carries more signal. Both stages degrade
+        gracefully: no FTS → dense-only; no reranker → fusion order. Toggle with GARUDA_RAG_HYBRID
+        / GARUDA_RAG_RERANK (or the per-call args)."""
+        if not (self._db_ready and (query or "").strip() and self._ensure_vector()):
+            return []
+        hybrid = _env_on("GARUDA_RAG_HYBRID", True) if hybrid is None else hybrid
+        rerank = _env_on("GARUDA_RAG_RERANK", True) if rerank is None else rerank
+        try:
+            # Retrieve BROAD (cheap) so fusion + rerank have a real pool to choose from.
+            n = max(k * 6, 30)
+            dense = self._dense_candidates(query, kind, design, n)
+            if hybrid:
+                lex = self._lexical_candidates(query, kind, design, n)
+                fused = _rrf_fuse([dense, lex]) if (dense or lex) else []
+            else:
+                fused = dense
+            if not fused:
+                return []
+            if rerank:
+                return self._rerank(query, fused[: max(k * 8, 40)], k)
+            return fused[:k]
         except Exception as exc:  # noqa: BLE001
             logger.warning("recall failed: %s", exc)
             return []
@@ -337,7 +472,20 @@ class MemoryStore:
                 txt = ""
             return self.remember(kind, txt[:20000], design=design, source=source or str(p),
                                   title=p.name, object_local_path=p, object_key=okey)
+        # PDFs and images: EXTRACT their real text (pypdf + OCR fallback) so the row is searchable
+        # by CONTENT — not the old "PDF document: paper.pdf" placeholder that recall couldn't use.
+        # The original blob still goes to object storage (object_local_path=p).
         note = _BIN_NOTE.get(ext, "binary artifact")
+        if ext == ".pdf" or ext in _IMAGE_EXT:
+            try:
+                from extract import file_to_text
+                body = (file_to_text(p) or "").strip()
+            except Exception:  # noqa: BLE001
+                body = ""
+            text = (f"{note}: {p.name}\n\n{body}" if body
+                    else f"{note}: {p.name} (design: {design}) — no extractable text")
+            return self.remember(kind, text[:20000], design=design, source=source or str(p),
+                                  title=p.name, object_local_path=p, object_key=okey)
         return self.remember(kind, f"{note}: {p.name} (design: {design})", design=design,
                               source=source or str(p), title=p.name,
                               object_local_path=p, object_key=okey)
